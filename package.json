@@ -1,0 +1,36 @@
+{
+  "name": "hostel-pg",
+  "version": "1.0.0",
+  "description": "Production-grade Hostel / PG Management Web App with separate Student & Owner portals",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "server": "node server/index.js",
+    "client": "cd client && npm run dev",
+    "build": "cd client && npm run build",
+    "dev": "node server/index.js"
+  },
+  "keywords": [
+    "hostel",
+    "pg-management",
+    "qr-system",
+    "student-onboarding"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.2.0",
+    "nanoid": "^6.0.1"
+  },
+  "devDependencies": {
+    "sharp": "^0.35.3"
+  }
+}
