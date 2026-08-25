@@ -10,6 +10,7 @@ const studentRoutes = require('./routes/studentRoutes');
 const ownerRoutes = require('./routes/ownerRoutes');
 const documentRoutes = require('./routes/documentRoutes');
 const { supabase } = require('./supabase');
+
 const app = express();
 const PORT = process.env.PORT || 5001;
 
@@ -42,6 +43,7 @@ app.get('/api/health', (req, res) => {
     service: 'Hostel PG Management API',
   });
 });
+
 app.get('/api/supabase-test', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -68,6 +70,7 @@ app.get('/api/supabase-test', async (req, res) => {
     });
   }
 });
+
 // Serve frontend in production if built
 const clientDistPath = path.join(__dirname, '../client/dist');
 app.use(express.static(clientDistPath));
@@ -90,6 +93,10 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Internal Server Error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Hostel/PG Management Server running on port http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`🚀 Hostel/PG Management Server running on port http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
