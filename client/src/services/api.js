@@ -265,6 +265,14 @@ export const api = {
     });
   },
 
+  async uploadOwnerPaymentQR(formData) {
+    return safeFetch(`${API_BASE}/payments/owner/upload-qr`, {
+      method: 'POST',
+      headers: { ...getAuthHeader() },
+      body: formData,
+    });
+  },
+
   async getOwnerTenantHistory(studentId) {
     return safeFetch(`${API_BASE}/payments/owner/tenant-history/${studentId}`, {
       headers: { ...getAuthHeader() },

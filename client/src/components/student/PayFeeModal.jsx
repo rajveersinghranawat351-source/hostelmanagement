@@ -206,15 +206,23 @@ export default function PayFeeModal({ feeData, onClose, onPaymentSuccess }) {
                 <span>Scan Owner UPI QR or Open App</span>
               </div>
 
-              {/* Dynamic QR Code Card */}
+              {/* Dynamic / Custom QR Code Card */}
               <div className="bg-slate-900 rounded-2xl p-5 text-center text-white space-y-3 shadow-lg">
-                <div className="w-48 h-48 mx-auto bg-white p-3 rounded-2xl shadow-inner flex items-center justify-center">
-                  <QRCodeSVG
-                    value={upiIntentUrl}
-                    size={170}
-                    level="H"
-                    includeMargin={false}
-                  />
+                <div className="w-48 h-48 mx-auto bg-white p-2 rounded-2xl shadow-inner flex items-center justify-center overflow-hidden">
+                  {paymentDetails?.qrImageUrl ? (
+                    <img
+                      src={paymentDetails.qrImageUrl}
+                      alt="Owner Standee QR Code"
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <QRCodeSVG
+                      value={upiIntentUrl}
+                      size={170}
+                      level="H"
+                      includeMargin={false}
+                    />
+                  )}
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-white">{payeeName}</h4>

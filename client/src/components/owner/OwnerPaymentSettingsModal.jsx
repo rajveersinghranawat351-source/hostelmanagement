@@ -7,7 +7,9 @@ import {
   Check,
   Loader2,
   Building2,
-  AlertCircle
+  Upload,
+  Image as ImageIcon,
+  Trash2
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { api } from '../../services/api';
@@ -17,8 +19,10 @@ export default function OwnerPaymentSettingsModal({ onClose, onSaved }) {
 
   const [upiId, setUpiId] = useState('');
   const [accountHolderName, setAccountHolderName] = useState('');
+  const [qrImageUrl, setQrImageUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingQr, setUploadingQr] = useState(false);
 
   useEffect(() => {
     fetchSettings();
@@ -31,11 +35,38 @@ export default function OwnerPaymentSettingsModal({ onClose, onSaved }) {
       if (res.settings) {
         setUpiId(res.settings.upi_id || res.settings.upiId || '');
         setAccountHolderName(res.settings.account_holder_name || res.settings.accountHolderName || '');
+        setQrImageUrl(res.settings.qr_image_url || res.settings.qrImageUrl || '');
       }
     } catch (_) {
       showError('Failed to load existing UPI settings.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleQRFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showError('Please upload an image file (PNG, JPG, JPEG).');
+      return;
+    }
+
+    setUploadingQr(true);
+    try {
+      const formData = new FormData();
+      formData.append('qrImage', file);
+
+      const res = await api.uploadOwnerPaymentQR(formData);
+      if (res.qrImageUrl) {
+        setQrImageUrl(res.qrImageUrl);
+        showSuccess('Payment QR uploaded to Supabase Storage!');
+      }
+    } catch (err) {
+      showError(err.message || 'Failed to upload QR image.');
+    } finally {
+      setUploadingQr(false);
     }
   };
 
@@ -52,6 +83,7 @@ export default function OwnerPaymentSettingsModal({ onClose, onSaved }) {
       const res = await api.saveOwnerPaymentSettings({
         upiId: upiId.trim(),
         accountHolderName: accountHolderName.trim(),
+        qrImageUrl: qrImageUrl || null,
       });
       showSuccess(res.message || 'Payment settings saved successfully!');
       if (onSaved) onSaved(res.settings);
@@ -64,7 +96,7 @@ export default function OwnerPaymentSettingsModal({ onClose, onSaved }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-fade-in">
       <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full my-auto overflow-hidden">
         
         {/* HEADER */}
@@ -75,7 +107,7 @@ export default function OwnerPaymentSettingsModal({ onClose, onSaved }) {
             </div>
             <div>
               <h3 className="text-base font-bold font-heading">Owner Payment Settings</h3>
-              <p className="text-xs text-emerald-300/80">Configure UPI ID for tenant fee payments</p>
+              <p className="text-xs text-emerald-300/80">Configure UPI & Custom QR for tenant fee payments</p>
             </div>
           </div>
           <button
@@ -93,7 +125,7 @@ export default function OwnerPaymentSettingsModal({ onClose, onSaved }) {
             <p className="text-xs text-slate-500">Loading settings...</p>
           </div>
         ) : (
-          <form onSubmit={handleSave} className="p-6 space-y-4">
+          <form onSubmit={handleSave} className="p-5 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Your UPI ID (VPA) *
@@ -122,6 +154,60 @@ export default function OwnerPaymentSettingsModal({ onClose, onSaved }) {
                 placeholder="e.g. Silver Heights PG & Hostel"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500 transition"
               />
+            </div>
+
+            {/* QR CODE IMAGE UPLOAD TO SUPABASE STORAGE */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Upload Custom Standee QR Code (Optional)
+              </label>
+              
+              {qrImageUrl ? (
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={qrImageUrl}
+                      alt="Uploaded QR Code"
+                      className="w-12 h-12 object-contain bg-white rounded-xl border border-slate-200 p-1"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 block">Custom QR Attached ✓</span>
+                      <span className="text-[11px] text-emerald-600">Saved to Supabase Storage</span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setQrImageUrl('')}
+                    className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                    title="Remove QR Image"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <label className="border-2 border-dashed border-slate-200 hover:border-emerald-500 bg-slate-50 hover:bg-emerald-50/40 rounded-2xl p-4 text-center cursor-pointer transition flex flex-col items-center justify-center gap-1.5 block">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleQRFileUpload}
+                    className="hidden"
+                    disabled={uploadingQr}
+                  />
+                  {uploadingQr ? (
+                    <>
+                      <Loader2 className="w-5 h-5 text-emerald-600 animate-spin" />
+                      <span className="text-xs font-semibold text-emerald-600">Uploading to Supabase...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-5 h-5 text-slate-400" />
+                      <span className="text-xs font-semibold text-slate-700">Click to upload QR Standee image</span>
+                      <span className="text-[10px] text-slate-400">PNG, JPG up to 5MB</span>
+                    </>
+                  )}
+                </label>
+              )}
             </div>
 
             <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900 text-xs flex items-start gap-2">

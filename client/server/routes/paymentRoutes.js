@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { nanoid } = require('../utils');
 const { db } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
@@ -10,6 +11,23 @@ const {
   generateUpiIntentUrl,
   formatDate,
 } = require('../services/billingService');
+const {
+  syncOwnerPaymentSettings,
+  uploadOwnerQRImage,
+  syncRentBill,
+  syncPaymentTransaction,
+} = require('../services/supabasePaymentService');
+
+const upload = multer({
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed for UPI QR codes.'), false);
+    }
+  },
+});
 
 // ==========================================
 // TENANT / STUDENT PAYMENT ROUTES
@@ -227,6 +245,33 @@ router.post('/tenant/verify-and-record', requireAuth, requireRole('student'), (r
       VALUES (?, ?, ?, 'payment_received', ?)
     `).run(notifId, student.owner_id, student.id, notifMessage);
 
+    // 6. Sync bill and payment record to Supabase
+    Promise.all([
+      syncRentBill({
+        roomId: student.property_id,
+        ownerId: student.owner_id,
+        tenantId: student.user_id,
+        billingPeriod: currentDueDate,
+        amount: monthlyFee,
+        dueDate: currentDueDate,
+        status: 'paid',
+        paidAt: now.toISOString(),
+      }),
+      syncPaymentTransaction({
+        billId,
+        roomId: student.property_id,
+        ownerId: student.owner_id,
+        tenantId: student.user_id,
+        amount: monthlyFee,
+        status: 'success',
+        paymentProvider: paymentMethod || 'UPI',
+        transactionId: cleanTxnId,
+        paymentReference: paymentReference || cleanTxnId,
+        note: note || `Verified UPI Payment for ${billingPeriod}`,
+        paidAt: now.toISOString(),
+      }),
+    ]).catch((err) => console.warn('[Supabase Payment Sync Warning]:', err.message));
+
     return res.status(201).json({
       success: true,
       message: `Payment of ₹${monthlyFee.toLocaleString('en-IN')} successfully verified and recorded!`,
@@ -339,7 +384,7 @@ router.get('/owner/settings', requireAuth, requireRole('owner'), (req, res) => {
   }
 });
 
-router.post('/owner/settings', requireAuth, requireRole('owner'), (req, res) => {
+router.post('/owner/settings', requireAuth, requireRole('owner'), async (req, res) => {
   try {
     const { upiId, accountHolderName, qrImageUrl } = req.body;
 
@@ -356,6 +401,13 @@ router.post('/owner/settings', requireAuth, requireRole('owner'), (req, res) => 
       VALUES (?, ?, ?, ?, ?)
     `).run(settingsId, req.user.id, cleanUpi, cleanName, qrImageUrl || null);
 
+    // Sync to Supabase in background
+    syncOwnerPaymentSettings(req.user.id, {
+      ownerName: cleanName,
+      upiId: cleanUpi,
+      qrImageUrl: qrImageUrl || null,
+    }).catch((err) => console.warn('[Supabase Sync Warning]:', err.message));
+
     return res.json({
       message: 'Payment settings saved successfully!',
       settings: {
@@ -367,6 +419,32 @@ router.post('/owner/settings', requireAuth, requireRole('owner'), (req, res) => 
   } catch (error) {
     console.error('Owner settings save error:', error);
     return res.status(500).json({ error: 'Failed to save payment settings.' });
+  }
+});
+
+// 6. POST /api/payments/owner/upload-qr
+router.post('/owner/upload-qr', requireAuth, requireRole('owner'), upload.single('qrImage'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Please select a QR code image to upload.' });
+    }
+
+    // Try uploading to Supabase Storage bucket 'payment_qrs'
+    let publicUrl = await uploadOwnerQRImage(req.user.id, req.file.buffer, req.file.mimetype);
+
+    // Fallback: if Supabase Storage is not set up, convert to data URL so the owner's QR displays immediately
+    if (!publicUrl) {
+      publicUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+    }
+
+    return res.json({
+      success: true,
+      message: 'QR code image uploaded successfully!',
+      qrImageUrl: publicUrl,
+    });
+  } catch (error) {
+    console.error('QR upload error:', error);
+    return res.status(500).json({ error: 'Failed to upload QR image.' });
   }
 });
 
