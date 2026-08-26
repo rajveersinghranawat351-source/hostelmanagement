@@ -1,0 +1,69 @@
+{
+  "users": [
+    {
+      "id": "usr_owner_demo_01",
+      "name": "Rajesh Sharma",
+      "email": "owner@sunrise.com",
+      "mobile": "9876543210",
+      "password_hash": "$2b$10$N7ZGY/437PYbvHxkPzjCL.Ic8VEe5oD0KX/8FMryLsaqN33mZO9VO",
+      "role": "owner",
+      "created_at": "2026-08-25T10:00:00.000Z"
+    },
+    {
+      "id": "usr_demo_owner",
+      "name": "Rajesh Sharma",
+      "email": "owner@hostel.com",
+      "mobile": "9876543210",
+      "password_hash": "$2b$10$N7ZGY/437PYbvHxkPzjCL.Ic8VEe5oD0KX/8FMryLsaqN33mZO9VO",
+      "role": "owner",
+      "created_at": "2026-08-25T10:00:00.000Z"
+    },
+    {
+      "id": "usr_student_demo_01",
+      "name": "Abhay Shekhawat",
+      "email": "abhay@example.com",
+      "mobile": "9123456780",
+      "password_hash": "$2b$10$gVIG69GVWW2RGe63OwWKH.IeBHMlRREj8QDSioTIUQ7.DySi/KdE2",
+      "role": "student",
+      "created_at": "2026-08-25T10:00:00.000Z"
+    },
+    {
+      "id": "usr_demo_student",
+      "name": "Rahul Verma",
+      "email": "student@hostel.com",
+      "mobile": "9123456780",
+      "password_hash": "$2b$10$gVIG69GVWW2RGe63OwWKH.IeBHMlRREj8QDSioTIUQ7.DySi/KdE2",
+      "role": "student",
+      "created_at": "2026-08-25T10:00:00.000Z"
+    },
+    {
+      "id": "usr_9kCe303E9p",
+      "name": "Karan Meena",
+      "email": "new_student_1787722774076@test.com",
+      "mobile": "9876500000",
+      "password_hash": "$2b$10$4tSHuzMdkAzfGrheb5TnluXfy/1X7j3oRh8HmJ1kv.yU2rqXWqn4y",
+      "role": "student",
+      "created_at": "2026-08-26T05:39:34.142Z"
+    }
+  ],
+  "properties": [
+    {
+      "id": "prop_demo_01",
+      "owner_id": "usr_owner_demo_01",
+      "property_name": "Silver Heights Luxury PG & Hostel",
+      "property_type": "Co-Living / PG",
+      "address": "Plot 42, Knowledge Park III, Jagatpura, Jaipur",
+      "contact": "9876543210",
+      "city": "Jaipur, Rajasthan",
+      "image_url": null,
+      "qr_identifier": "QR_HSTL_JAIPUR_01",
+      "qr_status": "active",
+      "default_room": "204",
+      "default_bed": "B",
+      "qr_created_at": "2026-08-26T05:39:33.841Z",
+      "created_at": "2026-08-26T05:39:33.843Z"
+    }
+  ],
+  "student_profiles": [],
+  "notifications": []
+}
