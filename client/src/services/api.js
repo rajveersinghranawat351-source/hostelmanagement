@@ -212,4 +212,85 @@ export const api = {
     const blob = await res.blob();
     return URL.createObjectURL(blob);
   },
+
+  // ==========================================
+  // PAYMENT & BILLING APIS
+  // ==========================================
+
+  // Tenant APIs
+  async getTenantFeeStatus() {
+    return safeFetch(`${API_BASE}/payments/tenant/fee-status`, {
+      headers: { ...getAuthHeader() },
+    });
+  },
+
+  async getTenantPaymentHistory() {
+    return safeFetch(`${API_BASE}/payments/tenant/history`, {
+      headers: { ...getAuthHeader() },
+    });
+  },
+
+  async verifyAndRecordTenantPayment(paymentData) {
+    return safeFetch(`${API_BASE}/payments/tenant/verify-and-record`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify(paymentData),
+    });
+  },
+
+  // Owner APIs
+  async getOwnerPaymentDashboard() {
+    return safeFetch(`${API_BASE}/payments/owner/dashboard`, {
+      headers: { ...getAuthHeader() },
+    });
+  },
+
+  async getOwnerPaymentSettings() {
+    return safeFetch(`${API_BASE}/payments/owner/settings`, {
+      headers: { ...getAuthHeader() },
+    });
+  },
+
+  async saveOwnerPaymentSettings(settings) {
+    return safeFetch(`${API_BASE}/payments/owner/settings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify(settings),
+    });
+  },
+
+  async getOwnerTenantHistory(studentId) {
+    return safeFetch(`${API_BASE}/payments/owner/tenant-history/${studentId}`, {
+      headers: { ...getAuthHeader() },
+    });
+  },
+
+  async updateOwnerTenantFee(studentId, monthlyFee, rentDueDay) {
+    return safeFetch(`${API_BASE}/payments/owner/update-tenant-fee`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify({ studentId, monthlyFee, rentDueDay }),
+    });
+  },
+
+  async recordOwnerOfflinePayment(paymentData) {
+    return safeFetch(`${API_BASE}/payments/owner/record-offline-payment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify(paymentData),
+    });
+  },
 };
+

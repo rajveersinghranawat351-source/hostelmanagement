@@ -21,11 +21,16 @@ import {
   RefreshCw,
   X,
   FileBadge,
-  Sparkles
+  Sparkles,
+  CreditCard,
+  Receipt,
+  ArrowUpRight
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { api } from '../../services/api';
+import PayFeeModal from './PayFeeModal';
+import PaymentHistoryList from './PaymentHistoryList';
 
 export default function StudentDashboard({ onRescanQR }) {
   const { user, logout } = useAuth();
@@ -37,8 +42,15 @@ export default function StudentDashboard({ onRescanQR }) {
   const [docBlobUrl, setDocBlobUrl] = useState(null);
   const [docLoading, setDocLoading] = useState(false);
 
+  // Fee & Payment States
+  const [feeData, setFeeData] = useState(null);
+  const [paymentHistory, setPaymentHistory] = useState([]);
+  const [showPayModal, setShowPayModal] = useState(false);
+
   useEffect(() => {
     fetchStudentProfile();
+    fetchFeeDetails();
+    fetchPaymentHistory();
   }, []);
 
   const fetchStudentProfile = async () => {
@@ -55,6 +67,28 @@ export default function StudentDashboard({ onRescanQR }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchFeeDetails = async () => {
+    try {
+      const res = await api.getTenantFeeStatus();
+      if (res.hasJoined) {
+        setFeeData(res);
+      }
+    } catch (_) {}
+  };
+
+  const fetchPaymentHistory = async () => {
+    try {
+      const res = await api.getTenantPaymentHistory();
+      setPaymentHistory(res.history || []);
+    } catch (_) {}
+  };
+
+  const handlePaymentCompleted = (receipt) => {
+    fetchFeeDetails();
+    fetchPaymentHistory();
+    fetchStudentProfile();
   };
 
   const handleOpenDoc = async (type) => {
@@ -152,7 +186,79 @@ export default function StudentDashboard({ onRescanQR }) {
         </div>
       </div>
 
-      {/* 2. CONNECTION & ROOM/BED STATUS BANNER */}
+      {/* 2. PROMINENT MONTHLY ROOM FEE REMINDER CARD */}
+      {feeData && feeData.billing && (
+        <div className="bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-md overflow-hidden relative">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center">
+                  <CreditCard className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Monthly Room Fee
+                </span>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                    feeData.billing.status === 'paid'
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : feeData.billing.status === 'overdue'
+                      ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                      : 'bg-amber-50 text-amber-800 border border-amber-200'
+                  }`}
+                >
+                  {feeData.billing.status === 'paid' ? '✓ Paid' : feeData.billing.statusLabel || 'Due'}
+                </span>
+              </div>
+
+              <div className="flex items-baseline gap-2 pt-1">
+                <span className="text-3xl font-extrabold text-slate-900 font-heading">
+                  ₹{Number(feeData.billing.monthlyFee || 8000).toLocaleString('en-IN')}
+                </span>
+                <span className="text-xs text-slate-500 font-medium">
+                  / month ({feeData.billing.billingPeriod})
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-500 pt-0.5">
+                {feeData.billing.status === 'paid' ? (
+                  <span className="text-emerald-700 font-medium">
+                    ✓ Paid for {feeData.billing.billingPeriod} • Next Rent Due: <strong>{feeData.billing.dueDate}</strong>
+                  </span>
+                ) : (
+                  <span>
+                    Due Date: <strong>{feeData.billing.dueDate}</strong> • Pay to: <strong>{feeData.paymentDetails?.payeeName || 'PG Owner'}</strong>
+                  </span>
+                )}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5 pt-2 sm:pt-0">
+              {feeData.billing.status !== 'paid' ? (
+                <button
+                  type="button"
+                  onClick={() => setShowPayModal(true)}
+                  className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-sm rounded-xl shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 transition cursor-pointer min-h-[44px]"
+                >
+                  <CreditCard className="w-4 h-4" />
+                  <span>Pay Room Fee Now</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowPayModal(true)}
+                  className="w-full sm:w-auto px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer min-h-[40px]"
+                >
+                  <Receipt className="w-4 h-4 text-slate-500" />
+                  <span>View UPI Details</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. CONNECTION & ROOM/BED STATUS BANNER */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-6 sm:p-7 shadow-xl">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-indigo-800/60">
           <div>
@@ -369,6 +475,41 @@ export default function StudentDashboard({ onRescanQR }) {
         </div>
 
       </div>
+
+      {/* 5. PAYMENT HISTORY SECTION */}
+      <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+              <Receipt className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900 font-heading">Payment History</h3>
+              <p className="text-xs text-slate-500">Verified receipts & past monthly fee transactions</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={fetchPaymentHistory}
+            className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Refresh</span>
+          </button>
+        </div>
+
+        <PaymentHistoryList history={paymentHistory} />
+      </div>
+
+      {/* Pay Fee Modal */}
+      {showPayModal && feeData && (
+        <PayFeeModal
+          feeData={feeData}
+          onClose={() => setShowPayModal(false)}
+          onPaymentSuccess={handlePaymentCompleted}
+        />
+      )}
 
       {/* Secure Document Viewer Modal */}
       {activeDocModal && (

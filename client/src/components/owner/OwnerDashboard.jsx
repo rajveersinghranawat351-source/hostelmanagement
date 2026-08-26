@@ -16,18 +16,22 @@ import {
   GraduationCap,
   Home,
   BedSingle,
-  Phone
+  Phone,
+  CreditCard,
+  Receipt
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { api } from '../../services/api';
 import StudentProfileModal from './StudentProfileModal';
 import OwnerNotificationsModal from './OwnerNotificationsModal';
+import OwnerPaymentsTab from './OwnerPaymentsTab';
 
 export default function OwnerDashboard({ property, onViewQR }) {
   const { user, logout } = useAuth();
   const { showError, showSuccess } = useToast();
 
+  const [activeTab, setActiveTab] = useState('students'); // 'students' | 'payments'
   const [stats, setStats] = useState({ total: 0, pending: 0, active: 0, vacated: 0, unreadNotifications: 0 });
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -147,8 +151,41 @@ export default function OwnerDashboard({ property, onViewQR }) {
         </div>
       </div>
 
-      {/* 2. STATS CARDS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 2. MAIN NAVIGATION TABS */}
+      <div className="bg-slate-200/80 p-1.5 rounded-2xl flex items-center gap-2 max-w-md mx-auto sm:mx-0">
+        <button
+          type="button"
+          onClick={() => setActiveTab('students')}
+          className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+            activeTab === 'students'
+              ? 'bg-white text-slate-900 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Users className="w-4 h-4 text-indigo-600" />
+          <span>Residents & KYC ({stats.total})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('payments')}
+          className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+            activeTab === 'payments'
+              ? 'bg-white text-slate-900 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <CreditCard className="w-4 h-4 text-emerald-600" />
+          <span>Rent & Payments</span>
+        </button>
+      </div>
+
+      {activeTab === 'payments' ? (
+        <OwnerPaymentsTab />
+      ) : (
+        <>
+          {/* 3. STATS CARDS */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         
         <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm flex items-center justify-between">
           <div>
@@ -345,6 +382,8 @@ export default function OwnerDashboard({ property, onViewQR }) {
         )}
 
       </div>
+        </>
+      )}
 
       {/* Student Profile Modal */}
       {selectedStudentId && (

@@ -9,6 +9,7 @@ const propertyRoutes = require('./routes/propertyRoutes');
 const studentRoutes = require('./routes/studentRoutes');
 const ownerRoutes = require('./routes/ownerRoutes');
 const documentRoutes = require('./routes/documentRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
 const { supabase } = require('./supabase');
 
 const app = express();
@@ -34,6 +35,7 @@ app.use((req, res, next) => {
 ['/api/students', '/students'].forEach((prefix) => app.use(prefix, studentRoutes));
 ['/api/owner', '/owner'].forEach((prefix) => app.use(prefix, ownerRoutes));
 ['/api/documents', '/documents'].forEach((prefix) => app.use(prefix, documentRoutes));
+['/api/payments', '/payments'].forEach((prefix) => app.use(prefix, paymentRoutes));
 
 // Health Check
 app.get(['/api/health', '/health'], (req, res) => {
