@@ -5,7 +5,7 @@
       "name": "Rajesh Sharma",
       "email": "owner@sunrise.com",
       "mobile": "9876543210",
-      "password_hash": "$2b$10$f.CUlgqbW9TSN6bWqmkusesxN0/mQb./424qnUrR6HurHzTeQAPFC",
+      "password_hash": "$2b$10$Ru.eGDdMzjeAeX3G8XxlMuoTlnNbB32yl89NA70KYe/Kf/inkptlK",
       "role": "owner",
       "created_at": "2026-08-25T10:00:00.000Z"
     },
@@ -14,7 +14,7 @@
       "name": "Rajesh Sharma",
       "email": "owner@hostel.com",
       "mobile": "9876543210",
-      "password_hash": "$2b$10$f.CUlgqbW9TSN6bWqmkusesxN0/mQb./424qnUrR6HurHzTeQAPFC",
+      "password_hash": "$2b$10$Ru.eGDdMzjeAeX3G8XxlMuoTlnNbB32yl89NA70KYe/Kf/inkptlK",
       "role": "owner",
       "created_at": "2026-08-25T10:00:00.000Z"
     },
@@ -23,7 +23,7 @@
       "name": "Abhay Shekhawat",
       "email": "abhay@example.com",
       "mobile": "9123456780",
-      "password_hash": "$2b$10$qA2L88vqoXaUh.d/19NzIuwwVvbkJ3x9FAHP/f8f..fd3TqVyknSC",
+      "password_hash": "$2b$10$5CFrPsPrbhyj7HBF2sY7PeWwwpf9wo/kKS7Vzs6OygJiFWPOi52si",
       "role": "student",
       "created_at": "2026-08-25T10:00:00.000Z"
     },
@@ -32,7 +32,7 @@
       "name": "Rahul Verma",
       "email": "student@hostel.com",
       "mobile": "9123456780",
-      "password_hash": "$2b$10$qA2L88vqoXaUh.d/19NzIuwwVvbkJ3x9FAHP/f8f..fd3TqVyknSC",
+      "password_hash": "$2b$10$5CFrPsPrbhyj7HBF2sY7PeWwwpf9wo/kKS7Vzs6OygJiFWPOi52si",
       "role": "student",
       "created_at": "2026-08-25T10:00:00.000Z"
     },

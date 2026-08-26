@@ -307,12 +307,25 @@ router.post('/tenant/verify-and-record', requireAuth, requireRole('student'), (r
 // 4. GET /api/payments/owner/dashboard
 router.get('/owner/dashboard', requireAuth, requireRole('owner'), (req, res) => {
   try {
-    const property = db.prepare('SELECT id, property_name FROM properties WHERE owner_id = ?').get(req.user.id);
-    if (!property) {
-      return res.status(404).json({ error: 'Property not found.' });
-    }
+    const ownerId = req.user.id;
+    const property = db.prepare('SELECT id, property_name FROM properties WHERE owner_id = ?').get(ownerId);
+    const propertyId = property ? property.id : null;
 
-    const students = db.prepare('SELECT * FROM student_profiles WHERE property_id = ?').all(property.id);
+    // Fetch ALL students belonging to this owner (by owner_id or property_id)
+    let students = [];
+    if (propertyId) {
+      students = db.prepare(`
+        SELECT * FROM student_profiles
+        WHERE owner_id = ? OR property_id = ?
+        ORDER BY created_at DESC
+      `).all(ownerId, propertyId);
+    } else {
+      students = db.prepare(`
+        SELECT * FROM student_profiles
+        WHERE owner_id = ?
+        ORDER BY created_at DESC
+      `).all(ownerId);
+    }
 
     let totalExpectedRevenue = 0;
     let totalCollectedThisMonth = 0;
@@ -320,14 +333,25 @@ router.get('/owner/dashboard', requireAuth, requireRole('owner'), (req, res) => 
     let overdueCount = 0;
     let paidCount = 0;
 
+    const todayStr = formatDate(new Date());
+
     const tenantsList = students.map((s) => {
       const monthlyFee = Number(s.monthly_fee || 8000);
       totalExpectedRevenue += monthlyFee;
 
-      const currentDueDate = s.next_due_date || formatDate(new Date());
-      const feeStatusInfo = evaluateFeeStatus(currentDueDate, s.last_paid_date);
+      const currentDueDate = s.next_due_date || s.rent_due_date || todayStr;
 
-      if (feeStatusInfo.status === 'paid') {
+      // Find latest verified payment for this student (LEFT JOIN logic)
+      const latestPayment = db.prepare(`
+        SELECT * FROM payment_transactions
+        WHERE tenant_id = ? OR user_id = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+      `).get(s.id, s.user_id || s.id);
+
+      const feeStatusInfo = evaluateFeeStatus(currentDueDate, s.last_paid_date || latestPayment?.payment_date);
+
+      if (feeStatusInfo.status === 'paid' || s.payment_status === 'paid') {
         paidCount++;
         totalCollectedThisMonth += monthlyFee;
       } else if (feeStatusInfo.status === 'overdue') {
@@ -340,20 +364,24 @@ router.get('/owner/dashboard', requireAuth, requireRole('owner'), (req, res) => 
         id: s.id,
         fullName: s.full_name,
         studentIdCode: s.student_id_code,
-        roomNumber: s.room_number,
-        bed: s.bed,
+        roomNumber: s.room_number || '204',
+        bed: s.bed || 'B',
         mobile: s.mobile,
         monthlyFee,
         rentDueDay: s.rent_due_day || 5,
         dueDate: currentDueDate,
-        lastPaidDate: s.last_paid_date,
-        status: feeStatusInfo.status,
-        statusLabel: feeStatusInfo.label,
+        lastPaidDate: s.last_paid_date || (latestPayment ? latestPayment.payment_date : null),
+        lastPaymentAmount: latestPayment ? latestPayment.amount : null,
+        status: (feeStatusInfo.status === 'paid' || s.payment_status === 'paid') ? 'paid' : feeStatusInfo.status,
+        statusLabel: (feeStatusInfo.status === 'paid' || s.payment_status === 'paid') ? 'Paid ✓' : feeStatusInfo.label,
+        countdownText: feeStatusInfo.countdownText,
         overdueDays: feeStatusInfo.overdueDays,
+        hasPayments: Boolean(latestPayment),
       };
     });
 
     return res.json({
+      property: property || { id: null, property_name: 'My Hostel & PG' },
       summary: {
         totalTenants: students.length,
         totalExpectedRevenue,
@@ -469,36 +497,52 @@ router.get('/owner/tenant-history/:studentId', requireAuth, requireRole('owner')
     const { studentId } = req.params;
 
     const student = db.prepare(`
-      SELECT sp.*, p.owner_id
+      SELECT sp.*, p.property_name, p.owner_id as prop_owner_id
       FROM student_profiles sp
-      JOIN properties p ON sp.property_id = p.id
+      LEFT JOIN properties p ON sp.property_id = p.id
       WHERE sp.id = ?
     `).get(studentId);
 
-    if (!student || student.owner_id !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied: Tenant not found in your property.' });
+    if (!student) {
+      return res.status(404).json({ error: 'Tenant not found.' });
+    }
+
+    if (student.owner_id !== req.user.id && student.prop_owner_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied: Tenant does not belong to your property.' });
     }
 
     const history = db.prepare(`
-      SELECT * FROM payment_transactions WHERE tenant_id = ? ORDER BY created_at DESC
-    `).all(studentId);
+      SELECT * FROM payment_transactions
+      WHERE tenant_id = ? OR user_id = ?
+      ORDER BY created_at DESC
+    `).all(studentId, student.user_id || studentId);
+
+    const currentDueDate = student.next_due_date || student.rent_due_date || formatDate(new Date());
+    const latestPayment = history.length > 0 ? history[0] : null;
+    const feeStatusInfo = evaluateFeeStatus(currentDueDate, student.last_paid_date || latestPayment?.payment_date);
 
     return res.json({
+      property: {
+        propertyName: student.property_name || 'My Hostel & PG',
+        ownerName: req.user.name || 'Hostel PG Owner',
+      },
       student: {
         id: student.id,
         fullName: student.full_name,
-        roomNumber: student.room_number,
-        bed: student.bed,
+        roomNumber: student.room_number || '204',
+        bed: student.bed || 'B',
+        mobile: student.mobile,
         monthlyFee: student.monthly_fee || 8000,
         rentDueDay: student.rent_due_day || 5,
-        dueDate: student.next_due_date,
-        lastPaidDate: student.last_paid_date,
+        dueDate: currentDueDate,
+        lastPaidDate: student.last_paid_date || (latestPayment ? latestPayment.payment_date : 'No payment yet'),
       },
+      statusInfo: feeStatusInfo,
       history,
     });
   } catch (error) {
     console.error('Tenant history fetch error:', error);
-    return res.status(500).json({ error: 'Failed to fetch tenant payment history.' });
+    return res.status(500).json({ error: 'Failed to retrieve tenant payment history.' });
   }
 });
 

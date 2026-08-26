@@ -475,6 +475,28 @@ function executeSql(sql, params) {
     return [{ total, pending, active, vacated }];
   }
 
+  if (s.includes('from student_profiles sp') && s.includes('left join properties p on sp.property_id = p.id') && s.includes('where sp.id = ?')) {
+    const id = params[0];
+    const profile = store.student_profiles.find((sp) => sp.id === id);
+    if (!profile) return [];
+    const prop = store.properties.find((p) => p.id === profile.property_id);
+    return [
+      {
+        ...profile,
+        property_name: prop ? prop.property_name : 'My Hostel & PG',
+        prop_owner_id: prop ? prop.owner_id : profile.owner_id,
+      },
+    ];
+  }
+
+  if (s.includes('from student_profiles') && (s.includes('where owner_id = ?') || s.includes('owner_id = ? or property_id = ?'))) {
+    const ownerId = params[0];
+    const propId = params[1] || null;
+    let list = store.student_profiles.filter((sp) => sp.owner_id === ownerId || (propId && sp.property_id === propId));
+    list.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    return list;
+  }
+
   if (s.includes('from student_profiles where property_id = ?') || (s.includes('from student_profiles') && s.includes('order by'))) {
     const propId = params[0];
     let list = store.student_profiles.filter((sp) => !propId || sp.property_id === propId);
