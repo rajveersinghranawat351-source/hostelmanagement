@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import QRScannerCard from './QRScannerCard';
 import PropertyConfirmationScreen from './PropertyConfirmationScreen';
+import HostelAdmissionPaymentScreen from './HostelAdmissionPaymentScreen';
 import StudentRegistrationForm from './StudentRegistrationForm';
 import RegistrationSuccessScreen from './RegistrationSuccessScreen';
 import StudentDashboard from './StudentDashboard';
@@ -12,7 +13,8 @@ export default function StudentPortal() {
   const [loading, setLoading] = useState(true);
   const [hasJoined, setHasJoined] = useState(false);
   const [activeProperty, setActiveProperty] = useState(null);
-  const [stage, setStage] = useState('scan'); // 'scan' | 'confirm' | 'form' | 'success' | 'dashboard'
+  const [paymentReceipt, setPaymentReceipt] = useState(null);
+  const [stage, setStage] = useState('scan'); // 'scan' | 'confirm' | 'pay' | 'form' | 'success' | 'dashboard'
   const [registeredProfile, setRegisteredProfile] = useState(null);
 
   useEffect(() => {
@@ -44,11 +46,21 @@ export default function StudentPortal() {
   };
 
   const handleConfirmProperty = () => {
+    setStage('pay');
+  };
+
+  const handlePaymentVerified = (receipt) => {
+    setPaymentReceipt(receipt);
     setStage('form');
+  };
+
+  const handleBackToConfirm = () => {
+    setStage('confirm');
   };
 
   const handleBackToScan = () => {
     setActiveProperty(null);
+    setPaymentReceipt(null);
     setStage('scan');
   };
 
@@ -92,9 +104,18 @@ export default function StudentPortal() {
         />
       )}
 
+      {stage === 'pay' && (
+        <HostelAdmissionPaymentScreen
+          property={activeProperty}
+          onBack={handleBackToConfirm}
+          onPaymentVerified={handlePaymentVerified}
+        />
+      )}
+
       {stage === 'form' && (
         <StudentRegistrationForm
           property={activeProperty}
+          paymentReceipt={paymentReceipt}
           onBackToScan={handleBackToScan}
           onRegistrationSuccess={handleRegistrationSuccess}
         />

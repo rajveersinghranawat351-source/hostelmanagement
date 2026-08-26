@@ -324,17 +324,49 @@ router.post(
         aadhaarFilename
       );
 
-      // 7. Create Notification for Property Owner
+      // 7. Handle linked admission payment transaction if submitted
+      const { transactionId, paymentAmount, paymentDate, paymentTime, paymentNote } = req.body;
+      const now = new Date();
+      const todayStr = now.toISOString().split('T')[0];
+      const currentTimeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+      if (transactionId && transactionId.trim()) {
+        const cleanTxnId = transactionId.trim().toUpperCase();
+        const payAmount = Number(paymentAmount || property.monthly_fee || 8000);
+        const billId = `bill_${nanoid(10)}`;
+        const paymentId = `pay_${nanoid(10)}`;
+
+        // Check if transaction was already recorded to prevent duplicate insertions
+        const existingTxn = db.prepare('SELECT id FROM payment_transactions WHERE transaction_id = ?').get(cleanTxnId);
+        if (!existingTxn) {
+          db.prepare(`
+            INSERT INTO monthly_billings (id, tenant_id, user_id, owner_id, property_id, billing_period, amount, due_date, status, paid_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?)
+          `).run(billId, profileId, req.user.id, property.owner_id, property.id, 'Admission & 1st Month Fee', payAmount, todayStr, now.toISOString());
+
+          db.prepare(`
+            INSERT INTO payment_transactions (
+              id, tenant_id, user_id, owner_id, property_id, billing_id, billing_period,
+              amount, status, payment_provider, transaction_id, payment_reference, payment_date, payment_time, note
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'success', 'UPI', ?, ?, ?, ?, ?)
+          `).run(
+            paymentId, profileId, req.user.id, property.owner_id, property.id, billId,
+            'Admission & 1st Month Fee', payAmount, cleanTxnId, cleanTxnId, paymentDate || todayStr, paymentTime || currentTimeStr,
+            paymentNote || 'Hostel Admission Fee (Verified UPI)'
+          );
+        }
+      }
+
+      // 8. Create Notification for Property Owner
       const notifId = `notif_${nanoid(10)}`;
+      const notifMessage = transactionId
+        ? `🎉 New Admission with Paid Fee: ${resolvedName} submitted KYC for Room ${roomNumber || property.default_room || '204'}. Ref: ${transactionId.trim().toUpperCase()}`
+        : `📋 New Admission Application: ${resolvedName} registered for Room ${roomNumber || property.default_room || '204'}.`;
+
       db.prepare(`
         INSERT INTO notifications (id, owner_id, student_id, type, message, read)
-        VALUES (?, ?, ?, 'registration', ?, 0)
-      `).run(
-        notifId,
-        property.owner_id,
-        profileId,
-        `${resolvedName} has joined ${property.property_name} using your QR invitation.`
-      );
+        VALUES (?, ?, ?, 'student_registered', ?, 0)
+      `).run(notifId, property.owner_id, profileId, notifMessage);
 
       // 8. Retrieve Full Created Record
       const createdProfile = db.prepare(`

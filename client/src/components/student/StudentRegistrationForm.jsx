@@ -50,7 +50,7 @@ async function ensureFileObject(fileOrPreview, defaultFilename) {
   return null;
 }
 
-export default function StudentRegistrationForm({ property, onBackToScan, onRegistrationSuccess }) {
+export default function StudentRegistrationForm({ property, paymentReceipt, onBackToScan, onRegistrationSuccess }) {
   const { user } = useAuth();
   const { showError, showSuccess } = useToast();
 
@@ -206,6 +206,15 @@ export default function StudentRegistrationForm({ property, onBackToScan, onRegi
       payload.append('roomNumber', formData.roomNumber);
       payload.append('bed', formData.bed);
 
+      // Verified Payment Link
+      if (paymentReceipt) {
+        payload.append('transactionId', paymentReceipt.transactionId);
+        payload.append('paymentAmount', paymentReceipt.amount || 8000);
+        payload.append('paymentDate', paymentReceipt.paymentDate);
+        payload.append('paymentTime', paymentReceipt.paymentTime);
+        payload.append('paymentNote', paymentReceipt.note || 'Hostel Admission Fee');
+      }
+
       // Append files
       payload.append('facePhoto', resolvedFace, resolvedFace.name || 'face_photo.jpg');
       payload.append('aadhaarDocument', resolvedAadhaar, resolvedAadhaar.name || 'aadhaar_doc.jpg');
@@ -228,35 +237,66 @@ export default function StudentRegistrationForm({ property, onBackToScan, onRegi
       <div className="mb-6">
         <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-2">
           <span>Joining {property.propertyName}</span>
-          <span>{isReviewMode ? 'Step 4 of 5: Review' : 'Step 3 of 5: Student Information'}</span>
+          <span>{isReviewMode ? 'Step 5 of 5: Review & Submit' : 'Step 4 of 5: Student KYC Information'}</span>
         </div>
         <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
           <div
             className="bg-indigo-600 h-full rounded-full transition-all duration-300"
-            style={{ width: isReviewMode ? '80%' : '60%' }}
+            style={{ width: isReviewMode ? '100%' : '80%' }}
           />
         </div>
         <div className="flex items-center justify-between text-[11px] font-medium text-slate-400 mt-2 px-1">
-          <span className="text-indigo-600 font-medium">1. Scan QR</span>
-          <span className="text-indigo-600 font-medium">2. Verify</span>
-          <span className={`font-bold ${!isReviewMode ? 'text-indigo-600' : 'text-indigo-600'}`}>3. Information</span>
-          <span className={isReviewMode ? 'text-indigo-600 font-bold' : ''}>4. Review</span>
-          <span>5. Connected</span>
+          <span className="text-indigo-600">1. Scan QR</span>
+          <span className="text-indigo-600">2. Verify Hostel</span>
+          <span className="text-indigo-600">3. Pay Fee ✓</span>
+          <span className="text-indigo-600 font-bold">4. Fill KYC</span>
+          <span className={isReviewMode ? 'text-indigo-600 font-bold' : ''}>5. Review</span>
         </div>
       </div>
 
-      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-2xl overflow-hidden p-6 sm:p-8">
+      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-2xl overflow-hidden p-6 sm:p-8 space-y-6">
         
+        {/* PROMINENT VERIFIED PAYMENT RECEIPT BANNER */}
+        {paymentReceipt && (
+          <div className="bg-emerald-50 border border-emerald-200/80 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-fade-in">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shrink-0 shadow-sm">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
+                    Hostel Fee Paid & Verified
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                    ✓ Verified
+                  </span>
+                </div>
+                <div className="text-lg font-extrabold text-slate-900 font-heading">
+                  ₹{Number(paymentReceipt.amount || 8000).toLocaleString('en-IN')}
+                </div>
+                <p className="text-[11px] font-mono text-emerald-700 mt-0.5">
+                  Ref / UTR: <strong>{paymentReceipt.transactionId}</strong> • {paymentReceipt.paymentDate}
+                </p>
+              </div>
+            </div>
+
+            <div className="text-xs text-slate-500 bg-white/80 px-3 py-1.5 rounded-xl border border-emerald-100 shrink-0">
+              <span>Attached to your application</span>
+            </div>
+          </div>
+        )}
+
         {/* VIEW A: FILL INFORMATION FORM */}
         {!isReviewMode ? (
           <form onSubmit={handleProceedToReview} className="space-y-8 animate-fade-in">
             
             <div>
               <h2 className="text-2xl font-extrabold text-slate-900 font-heading">
-                Student Information Form
+                Student Admission & KYC Form
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Please complete your details to link your account to <strong>{property.propertyName}</strong>.
+                Please complete your details to link your admission to <strong>{property.propertyName}</strong>.
               </p>
             </div>
 

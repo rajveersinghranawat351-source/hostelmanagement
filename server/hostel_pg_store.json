@@ -5,7 +5,7 @@
       "name": "Rajesh Sharma",
       "email": "owner@sunrise.com",
       "mobile": "9876543210",
-      "password_hash": "$2b$10$FhCNu8uaVgwUIUSj/9Q0PuwUxsY1ltlNNMtvrjN1jI9S9U9Btljku",
+      "password_hash": "$2b$10$.x/s1PamTnTrQeLGMSErceB1jtkR6QczZcOohJ7M2CO1sVHTe2i3G",
       "role": "owner",
       "created_at": "2026-08-25T10:00:00.000Z"
     },
@@ -14,7 +14,7 @@
       "name": "Rajesh Sharma",
       "email": "owner@hostel.com",
       "mobile": "9876543210",
-      "password_hash": "$2b$10$FhCNu8uaVgwUIUSj/9Q0PuwUxsY1ltlNNMtvrjN1jI9S9U9Btljku",
+      "password_hash": "$2b$10$.x/s1PamTnTrQeLGMSErceB1jtkR6QczZcOohJ7M2CO1sVHTe2i3G",
       "role": "owner",
       "created_at": "2026-08-25T10:00:00.000Z"
     },
@@ -23,7 +23,7 @@
       "name": "Abhay Shekhawat",
       "email": "abhay@example.com",
       "mobile": "9123456780",
-      "password_hash": "$2b$10$6nWCfjAnTV3QswlDMQCLyOAMBFINDonNI3YMqgdC53wQiaKtJUCWa",
+      "password_hash": "$2b$10$4HZdbBIHmpmcmtvnf1gVQexo/pytKFmr1h17c8Hrs1raBUlgIEttS",
       "role": "student",
       "created_at": "2026-08-25T10:00:00.000Z"
     },
@@ -32,7 +32,7 @@
       "name": "Rahul Verma",
       "email": "student@hostel.com",
       "mobile": "9123456780",
-      "password_hash": "$2b$10$6nWCfjAnTV3QswlDMQCLyOAMBFINDonNI3YMqgdC53wQiaKtJUCWa",
+      "password_hash": "$2b$10$4HZdbBIHmpmcmtvnf1gVQexo/pytKFmr1h17c8Hrs1raBUlgIEttS",
       "role": "student",
       "created_at": "2026-08-25T10:00:00.000Z"
     },
@@ -103,6 +103,45 @@
       "joining_date": "2026-08-01",
       "created_at": "2026-08-26T12:30:03.877Z",
       "updated_at": "2026-08-26T12:30:50.765Z"
+    },
+    {
+      "id": "prof_GZBSqWtUd4",
+      "student_id_code": "STU-2026-7335",
+      "user_id": "usr_demo_student",
+      "property_id": "prop_demo_01",
+      "owner_id": "usr_owner_demo_01",
+      "qr_identifier": "QR_HSTL_JAIPUR_01",
+      "full_name": "Rahul Verma",
+      "dob": "2004-03-22",
+      "gender": 22,
+      "mobile": "Male",
+      "email": "9123456780",
+      "address": "student@hostel.com",
+      "hometown": "Malviya Nagar, Jaipur",
+      "college_name": "Jaipur",
+      "course": "MNIT Jaipur",
+      "branch": "B.Tech",
+      "year_semester": "Mechanical",
+      "enrollment_number": "2nd Year",
+      "guardian_name": "MNIT-2023-MECH-42",
+      "guardian_mobile": "Sanjay Verma",
+      "emergency_contact": "9829098765",
+      "relationship": "9829098765",
+      "purpose": "Father",
+      "stay_duration": "Engineering Studies",
+      "room_number": "302",
+      "bed": "A",
+      "face_photo": "A",
+      "aadhaar_document": "facePhoto_1787748319498_uV5Lbux2dr.png",
+      "status": "active",
+      "monthly_fee": 8000,
+      "rent_due_day": 5,
+      "last_paid_date": null,
+      "next_due_date": "2026-08-04",
+      "payment_status": "due",
+      "joining_date": "2026-08-26",
+      "created_at": "2026-08-26T12:45:19.498Z",
+      "updated_at": "2026-08-26T12:45:19.582Z"
     }
   ],
   "notifications": [
@@ -121,6 +160,14 @@
       "type": "💰 Room Fee Received: ₹8,500 paid by Abhay Shekhawat (Room 204). UTR: TEST_UTR_1787747450685",
       "read": 0,
       "created_at": "2026-08-26T12:30:50.690Z"
+    },
+    {
+      "id": "notif_I0G0D6NlpX",
+      "owner_id": "usr_owner_demo_01",
+      "student_id": "prof_GZBSqWtUd4",
+      "type": "🎉 New Admission with Paid Fee: Rahul Verma submitted KYC for Room 302. Ref: ADM_PAY_1787748319496",
+      "read": 0,
+      "created_at": "2026-08-26T12:45:19.511Z"
     }
   ],
   "owner_payment_settings": [
@@ -199,6 +246,19 @@
       "status": "paid",
       "paid_at": "2026-08-26T12:30:50.766Z",
       "created_at": "2026-08-26T12:30:50.766Z"
+    },
+    {
+      "id": "bill_8Q6arILKdE",
+      "tenant_id": "prof_GZBSqWtUd4",
+      "user_id": "usr_demo_student",
+      "owner_id": "usr_owner_demo_01",
+      "property_id": "prop_demo_01",
+      "billing_period": "Admission & 1st Month Fee",
+      "amount": 8000,
+      "due_date": "2026-08-26",
+      "status": "2026-08-26T12:45:19.498Z",
+      "paid_at": null,
+      "created_at": "2026-08-26T12:45:19.511Z"
     }
   ],
   "payment_transactions": [
@@ -291,6 +351,24 @@
       "payment_time": "06:00 pm",
       "note": "Cash received at desk",
       "created_at": "2026-08-26T12:30:50.767Z"
+    },
+    {
+      "id": "pay_nyIGyAiKRo",
+      "tenant_id": "prof_GZBSqWtUd4",
+      "user_id": "usr_demo_student",
+      "owner_id": "usr_owner_demo_01",
+      "property_id": "prop_demo_01",
+      "billing_id": "bill_8Q6arILKdE",
+      "billing_period": "Admission & 1st Month Fee",
+      "amount": 8000,
+      "status": "ADM_PAY_1787748319496",
+      "payment_provider": "ADM_PAY_1787748319496",
+      "transaction_id": "2026-08-26",
+      "payment_reference": "06:15 PM",
+      "payment_date": "Hostel Admission Fee (Verified UPI)",
+      "payment_time": "06:15 pm",
+      "note": "",
+      "created_at": "2026-08-26T12:45:19.511Z"
     }
   ]
 }
