@@ -35,7 +35,7 @@ app.use((req, res, next) => {
 ['/api/students', '/students'].forEach((prefix) => app.use(prefix, studentRoutes));
 ['/api/owner', '/owner'].forEach((prefix) => app.use(prefix, ownerRoutes));
 ['/api/documents', '/documents'].forEach((prefix) => app.use(prefix, documentRoutes));
-['/api/payments', '/payments'].forEach((prefix) => app.use(prefix, paymentRoutes));
+['/api/payments', '/payments', '/api/owner/payments', '/owner/payments', '/api/owner/rent', '/owner/rent'].forEach((prefix) => app.use(prefix, paymentRoutes));
 
 // Health Check
 app.get(['/api/health', '/health'], (req, res) => {

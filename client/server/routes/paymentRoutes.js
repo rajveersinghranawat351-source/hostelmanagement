@@ -33,8 +33,8 @@ const upload = multer({
 // TENANT / STUDENT PAYMENT ROUTES
 // ==========================================
 
-// 1. GET /api/payments/tenant/fee-status
-router.get('/tenant/fee-status', requireAuth, requireRole('student'), (req, res) => {
+// 1. GET tenant fee status
+router.get(['/tenant/fee-status', '/fee-status', '/my-rent'], requireAuth, requireRole('student'), (req, res) => {
   try {
     const student = db.prepare(`
       SELECT sp.*, p.property_name, p.address as property_address, p.city as property_city, u.name as owner_name, u.mobile as owner_mobile, u.email as owner_email
@@ -53,7 +53,6 @@ router.get('/tenant/fee-status', requireAuth, requireRole('student'), (req, res)
       });
     }
 
-    // Get owner's configured UPI settings
     const ownerSettings = db.prepare(`
       SELECT * FROM owner_payment_settings WHERE owner_id = ?
     `).get(student.owner_id);
@@ -66,10 +65,8 @@ router.get('/tenant/fee-status', requireAuth, requireRole('student'), (req, res)
     const monthlyFee = Number(student.monthly_fee || 8000);
     const billingPeriod = getBillingPeriodName(currentDueDate);
 
-    // Evaluate fee status based on server-side date arithmetic
     const feeStatusInfo = evaluateFeeStatus(currentDueDate, student.last_paid_date);
 
-    // Generate unique transaction reference for this billing attempt
     const txnRef = `FEE-${student.student_id_code || student.id.slice(-6)}-${Date.now().toString().slice(-6)}`;
     const upiIntentUrl = generateUpiIntentUrl(
       upiId,
@@ -119,8 +116,8 @@ router.get('/tenant/fee-status', requireAuth, requireRole('student'), (req, res)
   }
 });
 
-// 2. GET /api/payments/tenant/history
-router.get('/tenant/history', requireAuth, requireRole('student'), (req, res) => {
+// 2. GET tenant payment history
+router.get(['/tenant/history', '/tenant-history', '/my-history'], requireAuth, requireRole('student'), (req, res) => {
   try {
     const student = db.prepare(`
       SELECT id FROM student_profiles WHERE user_id = ? ORDER BY created_at DESC LIMIT 1
@@ -141,34 +138,26 @@ router.get('/tenant/history', requireAuth, requireRole('student'), (req, res) =>
   }
 });
 
-// 3. POST /api/payments/tenant/verify-and-record
-router.post('/tenant/verify-and-record', requireAuth, requireRole('student'), (req, res) => {
+// 3. POST verify and record tenant payment
+router.post(['/tenant/verify-and-record', '/verify-and-record', '/pay'], requireAuth, requireRole('student'), (req, res) => {
   try {
-    const { transactionId, paymentReference, note, paymentMethod } = req.body;
+    const { transactionId, paymentReference, paymentMethod, note } = req.body;
 
-    if (!transactionId || transactionId.trim().length < 5) {
-      return res.status(400).json({
-        error: 'Please provide a valid UPI Reference / UTR Number or Transaction ID (minimum 6 digits).',
-      });
+    if (!transactionId || !transactionId.trim()) {
+      return res.status(400).json({ error: 'Valid transaction/reference ID is required.' });
     }
 
     const cleanTxnId = transactionId.trim().toUpperCase();
 
-    // Check for duplicate transaction ID (Prevent double submission)
-    const existingTxn = db.prepare(`
-      SELECT id, payment_date, amount FROM payment_transactions WHERE transaction_id = ?
-    `).get(cleanTxnId);
-
-    if (existingTxn) {
+    const existingPayment = db.prepare('SELECT id FROM payment_transactions WHERE transaction_id = ?').get(cleanTxnId);
+    if (existingPayment) {
       return res.status(409).json({
-        error: `Transaction ID "${cleanTxnId}" has already been verified and recorded.`,
-        alreadyRecorded: true,
+        error: 'This transaction ID has already been recorded. Duplicate submissions are not allowed.',
       });
     }
 
-    // Get active student profile
     const student = db.prepare(`
-      SELECT sp.*, p.property_name, u.name as owner_name
+      SELECT sp.*, p.property_name, p.address as property_address, u.name as owner_name
       FROM student_profiles sp
       JOIN properties p ON sp.property_id = p.id
       JOIN users u ON p.owner_id = u.id
@@ -178,7 +167,7 @@ router.post('/tenant/verify-and-record', requireAuth, requireRole('student'), (r
     `).get(req.user.id);
 
     if (!student) {
-      return res.status(404).json({ error: 'No active hostel profile found for this student.' });
+      return res.status(404).json({ error: 'Student profile not found.' });
     }
 
     const now = new Date();
@@ -189,25 +178,13 @@ router.post('/tenant/verify-and-record', requireAuth, requireRole('student'), (r
     const monthlyFee = Number(student.monthly_fee || 8000);
     const billingPeriod = getBillingPeriodName(currentDueDate);
 
-    // 1. Create or update billing record
     const billId = `bill_${nanoid(10)}`;
     db.prepare(`
-      INSERT INTO monthly_billings (id, tenant_id, user_id, owner_id, property_id, billing_period, amount, due_date, status, paid_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      billId,
-      student.id,
-      student.user_id,
-      student.owner_id,
-      student.property_id,
-      billingPeriod,
-      monthlyFee,
-      currentDueDate,
-      'paid',
-      now.toISOString()
-    );
+      INSERT OR REPLACE INTO monthly_billings (
+        id, tenant_id, user_id, owner_id, property_id, billing_period, amount, due_date, status, paid_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?)
+    `).run(billId, student.id, student.user_id, student.owner_id, student.property_id, billingPeriod, monthlyFee, currentDueDate, now.toISOString());
 
-    // 2. Insert verified payment transaction
     const paymentId = `pay_${nanoid(10)}`;
     db.prepare(`
       INSERT INTO payment_transactions (
@@ -221,7 +198,7 @@ router.post('/tenant/verify-and-record', requireAuth, requireRole('student'), (r
       student.owner_id,
       student.property_id,
       billId,
-      `${billingPeriod} Room Fee`,
+      billingPeriod,
       monthlyFee,
       'success',
       paymentMethod || 'UPI',
@@ -232,17 +209,14 @@ router.post('/tenant/verify-and-record', requireAuth, requireRole('student'), (r
       note || `Verified UPI Payment for ${billingPeriod}`
     );
 
-    // 3. Compute new next due date (+1 month)
     const nextDueDate = calculateNextDueDate(currentDueDate, student.rent_due_day || 5);
 
-    // 4. Update student profile with last paid and new next due date
     db.prepare(`
       UPDATE student_profiles
       SET last_paid_date = ?, next_due_date = ?, payment_status = 'paid'
       WHERE id = ?
     `).run(todayStr, nextDueDate, student.id);
 
-    // 5. Send notification to owner
     const notifId = `notif_${nanoid(10)}`;
     const notifMessage = `💰 Room Fee Received: ₹${monthlyFee.toLocaleString('en-IN')} paid by ${student.full_name} (Room ${student.room_number || 'N/A'}). UTR: ${cleanTxnId}`;
     db.prepare(`
@@ -250,7 +224,6 @@ router.post('/tenant/verify-and-record', requireAuth, requireRole('student'), (r
       VALUES (?, ?, ?, 'payment_received', ?)
     `).run(notifId, student.owner_id, student.id, notifMessage);
 
-    // 6. Sync bill and payment record to Supabase
     Promise.all([
       syncRentBill({
         roomId: student.property_id,
@@ -304,14 +277,13 @@ router.post('/tenant/verify-and-record', requireAuth, requireRole('student'), (r
 // OWNER PAYMENT ROUTES
 // ==========================================
 
-// 4. GET /api/payments/owner/dashboard
-router.get('/owner/dashboard', requireAuth, requireRole('owner'), (req, res) => {
+// 4. GET owner dashboard
+router.get(['/owner/dashboard', '/dashboard', '/'], requireAuth, requireRole('owner'), (req, res) => {
   try {
     const ownerId = req.user.id;
     const property = db.prepare('SELECT id, property_name FROM properties WHERE owner_id = ?').get(ownerId);
     const propertyId = property ? property.id : null;
 
-    // Fetch ALL students belonging to this owner (by owner_id or property_id)
     let students = [];
     if (propertyId) {
       students = db.prepare(`
@@ -341,7 +313,6 @@ router.get('/owner/dashboard', requireAuth, requireRole('owner'), (req, res) => 
 
       const currentDueDate = s.next_due_date || s.rent_due_date || todayStr;
 
-      // Find latest verified payment for this student (LEFT JOIN logic)
       const latestPayment = db.prepare(`
         SELECT * FROM payment_transactions
         WHERE tenant_id = ? OR user_id = ?
@@ -398,8 +369,8 @@ router.get('/owner/dashboard', requireAuth, requireRole('owner'), (req, res) => 
   }
 });
 
-// 5. GET & POST /api/payments/owner/settings
-router.get('/owner/settings', requireAuth, requireRole('owner'), (req, res) => {
+// 5. GET & POST owner settings
+router.get(['/owner/settings', '/settings'], requireAuth, requireRole('owner'), (req, res) => {
   try {
     const settings = db.prepare('SELECT * FROM owner_payment_settings WHERE owner_id = ?').get(req.user.id);
     const user = db.prepare('SELECT name FROM users WHERE id = ?').get(req.user.id);
@@ -420,7 +391,7 @@ router.get('/owner/settings', requireAuth, requireRole('owner'), (req, res) => {
   }
 });
 
-router.post('/owner/settings', requireAuth, requireRole('owner'), async (req, res) => {
+router.post(['/owner/settings', '/settings'], requireAuth, requireRole('owner'), async (req, res) => {
   try {
     const { upiId, accountHolderName, qrImageUrl, paymentLink, lateFee, gracePeriod } = req.body;
 
@@ -441,7 +412,6 @@ router.post('/owner/settings', requireAuth, requireRole('owner'), async (req, re
       paymentLink ? paymentLink.trim() : null, Number(lateFee) || 0, Number(gracePeriod) || 0
     );
 
-    // Sync to Supabase in background
     syncOwnerPaymentSettings(req.user.id, {
       ownerName: cleanName,
       upiId: cleanUpi,
@@ -465,17 +435,15 @@ router.post('/owner/settings', requireAuth, requireRole('owner'), async (req, re
   }
 });
 
-// 6. POST /api/payments/owner/upload-qr
-router.post('/owner/upload-qr', requireAuth, requireRole('owner'), upload.single('qrImage'), async (req, res) => {
+// 6. POST owner QR upload
+router.post(['/owner/upload-qr', '/upload-qr'], requireAuth, requireRole('owner'), upload.single('qrImage'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Please select a QR code image to upload.' });
     }
 
-    // Try uploading to Supabase Storage bucket 'payment_qrs'
     let publicUrl = await uploadOwnerQRImage(req.user.id, req.file.buffer, req.file.mimetype);
 
-    // Fallback: if Supabase Storage is not set up, convert to data URL so the owner's QR displays immediately
     if (!publicUrl) {
       publicUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
     }
@@ -491,8 +459,8 @@ router.post('/owner/upload-qr', requireAuth, requireRole('owner'), upload.single
   }
 });
 
-// 6. GET /api/payments/owner/tenant-history/:studentId
-router.get('/owner/tenant-history/:studentId', requireAuth, requireRole('owner'), (req, res) => {
+// 7. GET owner tenant history
+router.get(['/owner/tenant-history/:studentId', '/tenant-history/:studentId', '/history/:studentId'], requireAuth, requireRole('owner'), (req, res) => {
   try {
     const { studentId } = req.params;
 
@@ -546,8 +514,8 @@ router.get('/owner/tenant-history/:studentId', requireAuth, requireRole('owner')
   }
 });
 
-// 7. POST /api/payments/owner/update-tenant-fee
-router.post('/owner/update-tenant-fee', requireAuth, requireRole('owner'), (req, res) => {
+// 8. POST update tenant fee
+router.post(['/owner/update-tenant-fee', '/update-tenant-fee'], requireAuth, requireRole('owner'), (req, res) => {
   try {
     const { studentId, monthlyFee, rentDueDay } = req.body;
 
@@ -556,73 +524,72 @@ router.post('/owner/update-tenant-fee', requireAuth, requireRole('owner'), (req,
     }
 
     const student = db.prepare(`
-      SELECT sp.*, p.owner_id
+      SELECT sp.*, p.owner_id as prop_owner_id
       FROM student_profiles sp
-      JOIN properties p ON sp.property_id = p.id
+      LEFT JOIN properties p ON sp.property_id = p.id
       WHERE sp.id = ?
     `).get(studentId);
 
-    if (!student || student.owner_id !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied: Tenant not found in your property.' });
+    if (!student || (student.owner_id !== req.user.id && student.prop_owner_id !== req.user.id)) {
+      return res.status(403).json({ error: 'Access denied: Tenant does not belong to your property.' });
     }
 
-    const numFee = Number(monthlyFee);
-    const numDay = Number(rentDueDay || student.rent_due_day || 5);
-
-    const now = new Date();
-    const nextDueDate = new Date(now.getFullYear(), now.getMonth(), numDay).toISOString().split('T')[0];
+    const newFee = Number(monthlyFee);
+    const newDueDay = Number(rentDueDay) || student.rent_due_day || 5;
 
     db.prepare(`
       UPDATE student_profiles
-      SET monthly_fee = ?, rent_due_day = ?, next_due_date = ?
+      SET monthly_fee = ?, rent_due_day = ?
       WHERE id = ?
-    `).run(numFee, numDay, nextDueDate, studentId);
+    `).run(newFee, newDueDay, studentId);
 
     return res.json({
-      message: `Monthly room fee updated to ₹${numFee.toLocaleString('en-IN')} (Due ${numDay}th of month).`,
-      student: {
-        id: student.id,
-        monthlyFee: numFee,
-        rentDueDay: numDay,
-        nextDueDate,
-      },
+      success: true,
+      message: `Monthly rent updated to ₹${newFee.toLocaleString('en-IN')} (Due on ${newDueDay}th of month).`,
+      monthlyFee: newFee,
+      rentDueDay: newDueDay,
     });
   } catch (error) {
-    console.error('Update fee error:', error);
-    return res.status(500).json({ error: 'Failed to update tenant room fee.' });
+    console.error('Update tenant fee error:', error);
+    return res.status(500).json({ error: 'Failed to update tenant fee.' });
   }
 });
 
-// 8. POST /api/payments/owner/record-offline-payment
-router.post('/owner/record-offline-payment', requireAuth, requireRole('owner'), (req, res) => {
+// 9. POST record offline payment
+router.post(['/owner/record-offline-payment', '/record-offline-payment'], requireAuth, requireRole('owner'), (req, res) => {
   try {
     const { studentId, amount, paymentMethod, referenceNote } = req.body;
 
+    if (!studentId || !amount || Number(amount) <= 0) {
+      return res.status(400).json({ error: 'Valid payment amount is required.' });
+    }
+
     const student = db.prepare(`
-      SELECT sp.*, p.property_name, p.owner_id
+      SELECT sp.*, p.property_name, p.owner_id as prop_owner_id
       FROM student_profiles sp
-      JOIN properties p ON sp.property_id = p.id
+      LEFT JOIN properties p ON sp.property_id = p.id
       WHERE sp.id = ?
     `).get(studentId);
 
-    if (!student || student.owner_id !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied: Tenant not found.' });
+    if (!student || (student.owner_id !== req.user.id && student.prop_owner_id !== req.user.id)) {
+      return res.status(403).json({ error: 'Access denied: Tenant does not belong to your property.' });
     }
 
-    const payAmount = Number(amount || student.monthly_fee || 8000);
     const now = new Date();
     const todayStr = formatDate(now);
     const currentTimeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 
     const currentDueDate = student.next_due_date || todayStr;
+    const payAmount = Number(amount);
     const billingPeriod = getBillingPeriodName(currentDueDate);
-    const txnId = `OFFLINE-${Date.now().toString().slice(-8)}`;
+    const cleanTxnId = `OFFLINE-${Date.now().toString().slice(-6)}-${nanoid(6).toUpperCase()}`;
 
     const billId = `bill_${nanoid(10)}`;
     db.prepare(`
-      INSERT INTO monthly_billings (id, tenant_id, user_id, owner_id, property_id, billing_period, amount, due_date, status, paid_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(billId, student.id, student.user_id, req.user.id, student.property_id, billingPeriod, payAmount, currentDueDate, 'paid', now.toISOString());
+      INSERT OR REPLACE INTO monthly_billings (
+        id, tenant_id, user_id, owner_id, property_id, billing_period, amount, due_date, status, paid_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?)
+    `).run(billId, student.id, student.user_id, req.user.id, student.property_id, billingPeriod, payAmount, currentDueDate, now.toISOString());
 
     const paymentId = `pay_${nanoid(10)}`;
     db.prepare(`
@@ -637,15 +604,15 @@ router.post('/owner/record-offline-payment', requireAuth, requireRole('owner'), 
       req.user.id,
       student.property_id,
       billId,
-      `${billingPeriod} Room Fee (Offline)`,
+      billingPeriod,
       payAmount,
       'success',
-      paymentMethod || 'Cash / Offline',
-      txnId,
-      referenceNote || 'Direct Cash / Bank Transfer',
+      paymentMethod || 'Cash',
+      cleanTxnId,
+      cleanTxnId,
       todayStr,
       currentTimeStr,
-      referenceNote || 'Marked as Paid by Owner'
+      referenceNote || `Offline ${paymentMethod || 'Cash'} payment recorded by owner`
     );
 
     const nextDueDate = calculateNextDueDate(currentDueDate, student.rent_due_day || 5);
@@ -657,11 +624,23 @@ router.post('/owner/record-offline-payment', requireAuth, requireRole('owner'), 
     `).run(todayStr, nextDueDate, student.id);
 
     return res.status(201).json({
-      message: `Offline payment of ₹${payAmount.toLocaleString('en-IN')} recorded successfully!`,
-      nextDueDate,
+      success: true,
+      message: `Offline payment of ₹${payAmount.toLocaleString('en-IN')} successfully recorded!`,
+      receipt: {
+        id: paymentId,
+        transactionId: cleanTxnId,
+        amount: payAmount,
+        billingPeriod,
+        paymentDate: todayStr,
+        paymentTime: currentTimeStr,
+        studentName: student.full_name,
+        roomNumber: student.room_number,
+        paymentMethod: paymentMethod || 'Cash',
+        nextDueDate,
+      },
     });
   } catch (error) {
-    console.error('Offline payment record error:', error);
+    console.error('Record offline payment error:', error);
     return res.status(500).json({ error: 'Failed to record offline payment.' });
   }
 });
