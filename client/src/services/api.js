@@ -1,4 +1,4 @@
-const API_BASE = '/api';
+const API_BASE = (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/$/, '') : '') + '/api';
 
 function getAuthHeader() {
   const token = localStorage.getItem('hostel_pg_token');
@@ -200,7 +200,10 @@ export const api = {
 
   // Secure Document Fetcher with Blob conversion
   async fetchSecureDocumentBlob(documentUrl) {
-    const res = await fetch(documentUrl, {
+    const fullUrl = documentUrl.startsWith('http')
+      ? documentUrl
+      : (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/$/, '') : '') + documentUrl;
+    const res = await fetch(fullUrl, {
       headers: { ...getAuthHeader() },
     });
     if (!res.ok) {

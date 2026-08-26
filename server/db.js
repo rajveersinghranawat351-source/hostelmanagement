@@ -3,21 +3,45 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 
-const dbPath = path.join(__dirname, 'hostel_pg.db');
+const isServerless = process.env.VERCEL === '1' || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME) || Boolean(process.env.NOW_REGION);
+
+const baseDir = isServerless ? '/tmp' : __dirname;
+const dbPath = isServerless ? path.join('/tmp', 'hostel_pg.db') : path.join(__dirname, 'hostel_pg.db');
+
+// In serverless environments, copy the database template to /tmp if it doesn't exist yet
+if (isServerless) {
+  try {
+    const srcDbPath = path.join(__dirname, 'hostel_pg.db');
+    if (!fs.existsSync(dbPath) && fs.existsSync(srcDbPath)) {
+      fs.copyFileSync(srcDbPath, dbPath);
+    }
+  } catch (err) {
+    console.warn('Notice: SQLite seed copy to /tmp:', err.message);
+  }
+}
+
 const db = new Database(dbPath);
 
 // Enable foreign keys and WAL mode
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+try {
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+} catch (err) {
+  console.warn('SQLite pragma warning:', err.message);
+}
 
 // Create upload directories
-const uploadsDir = path.join(__dirname, 'uploads');
+const uploadsDir = path.join(baseDir, 'uploads');
 const aadhaarDir = path.join(uploadsDir, 'aadhaar');
 const faceDir = path.join(uploadsDir, 'face_photos');
 
 [uploadsDir, aadhaarDir, faceDir].forEach((dir) => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+  try {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  } catch (err) {
+    console.warn(`Uploads dir setup notice (${dir}):`, err.message);
   }
 });
 

@@ -46,6 +46,13 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/supabase-test', async (req, res) => {
   try {
+    if (!supabase) {
+      return res.status(200).json({
+        connected: false,
+        message: 'Supabase client is not initialized. Please configure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your environment variables.',
+      });
+    }
+
     const { data, error } = await supabase
       .from('profiles')
       .select('id')
