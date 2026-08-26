@@ -65,19 +65,19 @@ export default function PWAInstallBanner() {
   }
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-50 animate-fade-in">
-      <div className="bg-slate-900/95 backdrop-blur-md border border-indigo-500/40 rounded-2xl p-4 shadow-2xl text-white flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white shadow-md shrink-0">
-            <Smartphone className="w-6 h-6" />
+    <div className="fixed bottom-3 left-3 right-3 sm:left-auto sm:right-6 sm:max-w-sm z-50 animate-fade-in">
+      <div className="bg-slate-900/95 backdrop-blur-md border border-indigo-500/50 rounded-2xl p-3.5 sm:p-4 shadow-2xl text-white flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white shadow-md shrink-0">
+            <Smartphone className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-1.5">
-              <h4 className="text-xs sm:text-sm font-bold text-white">Install HostelStay</h4>
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <h4 className="text-xs sm:text-sm font-bold text-white truncate">Install Hostel App</h4>
+              <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             </div>
-            <p className="text-[11px] text-slate-300">
-              Install app on your phone for instant 1-tap access.
+            <p className="text-[11px] text-slate-300 truncate">
+              Add to home screen for 1-tap app experience.
             </p>
           </div>
         </div>
@@ -85,14 +85,14 @@ export default function PWAInstallBanner() {
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={handleInstallClick}
-            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-md transition flex items-center gap-1.5 cursor-pointer"
+            className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-md transition flex items-center gap-1.5 cursor-pointer min-h-[38px]"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Install</span>
           </button>
           <button
             onClick={handleDismiss}
-            className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+            className="p-1.5 min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
             title="Dismiss"
           >
             <X className="w-4 h-4" />

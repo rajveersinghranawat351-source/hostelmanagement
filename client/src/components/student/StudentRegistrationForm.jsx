@@ -676,11 +676,11 @@ export default function StudentRegistrationForm({ property, onBackToScan, onRegi
             </div>
 
             {/* Bottom Actions */}
-            <div className="flex items-center justify-between pt-6 border-t border-slate-100">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-6 border-t border-slate-100">
               <button
                 type="button"
                 onClick={onBackToScan}
-                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                className="w-full sm:w-auto px-4 py-3 sm:py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[44px]"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span>Back</span>
@@ -688,7 +688,7 @@ export default function StudentRegistrationForm({ property, onBackToScan, onRegi
 
               <button
                 type="submit"
-                className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs sm:text-sm shadow-md shadow-indigo-600/20 flex items-center gap-2 transition cursor-pointer"
+                className="w-full sm:w-auto px-6 py-3.5 sm:py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs sm:text-sm shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 transition cursor-pointer min-h-[44px]"
               >
                 <span>Review Information</span>
                 <ArrowRight className="w-4 h-4" />
@@ -798,12 +798,12 @@ export default function StudentRegistrationForm({ property, onBackToScan, onRegi
             </div>
 
             {/* Review Action Buttons */}
-            <div className="flex items-center justify-between pt-6 border-t border-slate-100">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-6 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setIsReviewMode(false)}
                 disabled={submitting}
-                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                className="w-full sm:w-auto px-4 py-3 sm:py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[44px]"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span>← Edit Information</span>
@@ -813,7 +813,7 @@ export default function StudentRegistrationForm({ property, onBackToScan, onRegi
                 type="button"
                 onClick={handleSubmit}
                 disabled={submitting}
-                className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-600/25 flex items-center gap-2 transition cursor-pointer"
+                className="w-full sm:w-auto px-6 py-3.5 sm:py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 transition cursor-pointer min-h-[44px]"
               >
                 {submitting ? (
                   <>

@@ -67,7 +67,7 @@ export default function App() {
             {activeRole === 'student' ? <StudentPortal /> : <OwnerPortal />}
           </main>
           <footer className="text-center py-4 text-xs text-slate-400 border-t border-slate-200">
-            HostelStay • Smart Hostel & PG Management System
+            Hostel Management • Smart Hostel & PG System
           </footer>
         </div>
       )}

@@ -64,8 +64,12 @@ export default function QRScannerCard({ onPropertyDetected, onGoToDashboard }) {
       await html5QrCode.start(
         chosenId,
         {
-          fps: 10,
-          qrbox: { width: 240, height: 240 },
+          fps: 12,
+          qrbox: (viewWidth, viewHeight) => {
+            const edge = Math.min(viewWidth, viewHeight);
+            const size = Math.max(160, Math.min(Math.floor(edge * 0.72), 250));
+            return { width: size, height: size };
+          },
           aspectRatio: 1.0,
         },
         async (decodedText) => {

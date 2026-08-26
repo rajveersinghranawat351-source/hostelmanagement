@@ -1,7 +1,8 @@
-const CACHE_NAME = 'hostelstay-pwa-v1';
+const CACHE_NAME = 'hostel-management-pwa-v2';
 const APP_SHELL_ASSETS = [
   '/',
   '/index.html',
+  '/manifest.webmanifest',
   '/manifest.json',
   '/favicon.png',
   '/apple-touch-icon.png',
