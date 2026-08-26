@@ -28,15 +28,15 @@ app.use((req, res, next) => {
   next();
 });
 
-// API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/properties', propertyRoutes);
-app.use('/api/students', studentRoutes);
-app.use('/api/owner', ownerRoutes);
-app.use('/api/documents', documentRoutes);
+// API Routes (mounted with and without /api for 100% Vercel Serverless compatibility)
+['/api/auth', '/auth'].forEach((prefix) => app.use(prefix, authRoutes));
+['/api/properties', '/properties'].forEach((prefix) => app.use(prefix, propertyRoutes));
+['/api/students', '/students'].forEach((prefix) => app.use(prefix, studentRoutes));
+['/api/owner', '/owner'].forEach((prefix) => app.use(prefix, ownerRoutes));
+['/api/documents', '/documents'].forEach((prefix) => app.use(prefix, documentRoutes));
 
 // Health Check
-app.get('/api/health', (req, res) => {
+app.get(['/api/health', '/health'], (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),

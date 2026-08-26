@@ -203,11 +203,20 @@ if (useFallback || !db) {
 
   // Seed default demo accounts if missing
   const ensureFallbackSeeds = () => {
-    if (store.users.length === 0) {
-      const ownerHash = bcrypt.hashSync('owner123', 10);
-      const studentHash = bcrypt.hashSync('student123', 10);
+    const ownerHash = bcrypt.hashSync('owner123', 10);
+    const studentHash = bcrypt.hashSync('student123', 10);
 
-      store.users.push({
+    const demoUsers = [
+      {
+        id: 'usr_owner_demo_01',
+        name: 'Rajesh Sharma',
+        email: 'owner@sunrise.com',
+        mobile: '9876543210',
+        password_hash: ownerHash,
+        role: 'owner',
+        created_at: new Date().toISOString(),
+      },
+      {
         id: 'usr_demo_owner',
         name: 'Rajesh Sharma',
         email: 'owner@hostel.com',
@@ -215,9 +224,17 @@ if (useFallback || !db) {
         password_hash: ownerHash,
         role: 'owner',
         created_at: new Date().toISOString(),
-      });
-
-      store.users.push({
+      },
+      {
+        id: 'usr_student_demo_01',
+        name: 'Abhay Shekhawat',
+        email: 'abhay@example.com',
+        mobile: '9123456780',
+        password_hash: studentHash,
+        role: 'student',
+        created_at: new Date().toISOString(),
+      },
+      {
         id: 'usr_demo_student',
         name: 'Rahul Verma',
         email: 'student@hostel.com',
@@ -225,11 +242,19 @@ if (useFallback || !db) {
         password_hash: studentHash,
         role: 'student',
         created_at: new Date().toISOString(),
-      });
+      },
+    ];
 
+    demoUsers.forEach(u => {
+      if (!store.users.some(existing => existing.email.toLowerCase() === u.email.toLowerCase())) {
+        store.users.push(u);
+      }
+    });
+
+    if (store.properties.length === 0) {
       store.properties.push({
         id: 'prop_demo_01',
-        owner_id: 'usr_demo_owner',
+        owner_id: 'usr_owner_demo_01',
         property_name: 'Silver Heights Luxury PG & Hostel',
         property_type: 'Co-Living / PG',
         address: 'Plot 42, Knowledge Park III, Jagatpura, Jaipur',
@@ -243,9 +268,9 @@ if (useFallback || !db) {
         qr_created_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
       });
-
-      persist();
     }
+
+    persist();
   };
 
   ensureFallbackSeeds();
