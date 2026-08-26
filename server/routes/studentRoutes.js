@@ -3,7 +3,7 @@ const router = express.Router();
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
-const { nanoid } = require('nanoid');
+const { nanoid } = require('../utils');
 const { db, aadhaarDir, faceDir } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 

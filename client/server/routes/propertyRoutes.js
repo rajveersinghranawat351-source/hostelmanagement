@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { nanoid } = require('nanoid');
+const { nanoid } = require('../utils');
 const { db } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 
