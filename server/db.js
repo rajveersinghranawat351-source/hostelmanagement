@@ -264,26 +264,24 @@ function executeSql(sql, params) {
     return [{ count: store.users.length }];
   }
 
-  if (s.startsWith('select id from users where email = ?')) {
-    const email = (params[0] || '').toLowerCase().trim();
-    const user = store.users.find((u) => u.email.toLowerCase() === email);
-    return user ? [{ id: user.id }] : [];
-  }
-
   if (s.includes('from users where') && (s.includes('email') || s.includes('mobile'))) {
-    const emailOrMobile = (params[0] || '').toLowerCase().trim();
-    const mobile = (params[1] || '').trim();
+    const raw1 = (params[0] || '').toLowerCase().trim();
+    const raw2 = (params[1] || '').trim();
+    const digits1 = raw1.replace(/\D/g, '');
+    const digits2 = raw2.replace(/\D/g, '');
     const role = params[2];
 
     const found = store.users.find((u) => {
-      const uEmail = u.email.toLowerCase();
+      const uEmail = (u.email || '').toLowerCase().trim();
       const uMobile = (u.mobile || '').trim();
-      const matchesIdentity =
-        uEmail === emailOrMobile ||
-        uMobile === mobile ||
-        uEmail === mobile.toLowerCase() ||
-        uMobile === emailOrMobile;
-      if (!matchesIdentity) return false;
+      const uDigits = uMobile.replace(/\D/g, '');
+
+      const matchesEmail = uEmail === raw1 || uEmail === raw2.toLowerCase();
+      const matchesMobile =
+        (uMobile && (uMobile === raw1 || uMobile === raw2)) ||
+        (uDigits && (uDigits === digits1 || uDigits === digits2));
+
+      if (!matchesEmail && !matchesMobile) return false;
       if (role && u.role !== role) return false;
       return true;
     });
