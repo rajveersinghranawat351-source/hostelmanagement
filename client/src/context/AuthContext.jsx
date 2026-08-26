@@ -5,31 +5,60 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('hostel_pg_user');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem('hostel_pg_user');
+      return (saved && saved !== 'undefined' && saved !== 'null') ? JSON.parse(saved) : null;
+    } catch (e) {
+      console.warn('Failed to parse saved user:', e);
+      try { localStorage.removeItem('hostel_pg_user'); } catch (_) {}
+      return null;
+    }
   });
-  const [token, setToken] = useState(() => localStorage.getItem('hostel_pg_token') || null);
+  const [token, setToken] = useState(() => {
+    try {
+      const t = localStorage.getItem('hostel_pg_token');
+      return (t && t !== 'undefined' && t !== 'null') ? t : null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [loading, setLoading] = useState(true);
-  const [activeRole, setActiveRole] = useState(() => localStorage.getItem('hostel_pg_active_role') || null);
+  const [activeRole, setActiveRole] = useState(() => {
+    try {
+      const r = localStorage.getItem('hostel_pg_active_role');
+      return (r && r !== 'undefined' && r !== 'null' && ['student', 'owner'].includes(r)) ? r : null;
+    } catch (e) {
+      return null;
+    }
+  });
 
   useEffect(() => {
     async function verifyAuth() {
-      const storedToken = localStorage.getItem('hostel_pg_token');
-      if (storedToken) {
-        try {
-          const res = await api.getMe();
-          setUser(res.user);
-          localStorage.setItem('hostel_pg_user', JSON.stringify(res.user));
-          if (!activeRole) {
-            setActiveRole(res.user.role);
-            localStorage.setItem('hostel_pg_active_role', res.user.role);
+      try {
+        const storedToken = localStorage.getItem('hostel_pg_token');
+        if (storedToken && storedToken !== 'undefined' && storedToken !== 'null') {
+          try {
+            const res = await api.getMe();
+            if (res && res.user) {
+              setUser(res.user);
+              localStorage.setItem('hostel_pg_user', JSON.stringify(res.user));
+              if (!activeRole) {
+                setActiveRole(res.user.role);
+                localStorage.setItem('hostel_pg_active_role', res.user.role);
+              }
+            } else {
+              logout();
+            }
+          } catch (err) {
+            console.warn('Session verification failed, resetting auth state:', err);
+            logout();
           }
-        } catch (err) {
-          console.warn('Session verification failed, logging out:', err);
-          logout();
         }
+      } catch (e) {
+        console.warn('Auth verification storage access warning:', e);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     verifyAuth();
   }, []);
