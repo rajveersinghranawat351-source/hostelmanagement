@@ -97,6 +97,8 @@ router.get('/tenant/fee-status', requireAuth, requireRole('student'), (req, res)
         lastPaidDate: student.last_paid_date,
         status: feeStatusInfo.status,
         statusLabel: feeStatusInfo.label,
+        countdownText: feeStatusInfo.countdownText,
+        daysRemaining: feeStatusInfo.daysRemaining,
         overdueDays: feeStatusInfo.overdueDays,
         isDueToday: feeStatusInfo.isDueToday,
       },
@@ -104,6 +106,9 @@ router.get('/tenant/fee-status', requireAuth, requireRole('student'), (req, res)
         upiId,
         payeeName,
         qrImageUrl: ownerSettings?.qr_image_url || null,
+        paymentLink: ownerSettings?.payment_link || null,
+        lateFee: ownerSettings?.late_fee || 0,
+        gracePeriod: ownerSettings?.grace_period || 0,
         upiIntentUrl,
         txnRef,
       },
@@ -376,6 +381,9 @@ router.get('/owner/settings', requireAuth, requireRole('owner'), (req, res) => {
         upiId: '',
         accountHolderName: user?.name || '',
         qrImageUrl: null,
+        paymentLink: '',
+        lateFee: 0,
+        gracePeriod: 0,
       },
     });
   } catch (error) {
@@ -386,7 +394,7 @@ router.get('/owner/settings', requireAuth, requireRole('owner'), (req, res) => {
 
 router.post('/owner/settings', requireAuth, requireRole('owner'), async (req, res) => {
   try {
-    const { upiId, accountHolderName, qrImageUrl } = req.body;
+    const { upiId, accountHolderName, qrImageUrl, paymentLink, lateFee, gracePeriod } = req.body;
 
     if (!upiId || !upiId.includes('@')) {
       return res.status(400).json({ error: 'Please enter a valid UPI ID (e.g., yourname@okhdfcbank).' });
@@ -397,9 +405,13 @@ router.post('/owner/settings', requireAuth, requireRole('owner'), async (req, re
     const settingsId = `pay_set_${nanoid(10)}`;
 
     db.prepare(`
-      INSERT OR REPLACE INTO owner_payment_settings (id, owner_id, upi_id, account_holder_name, qr_image_url)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(settingsId, req.user.id, cleanUpi, cleanName, qrImageUrl || null);
+      INSERT OR REPLACE INTO owner_payment_settings (
+        id, owner_id, upi_id, account_holder_name, qr_image_url, payment_link, late_fee, grace_period
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      settingsId, req.user.id, cleanUpi, cleanName, qrImageUrl || null,
+      paymentLink ? paymentLink.trim() : null, Number(lateFee) || 0, Number(gracePeriod) || 0
+    );
 
     // Sync to Supabase in background
     syncOwnerPaymentSettings(req.user.id, {
@@ -414,6 +426,9 @@ router.post('/owner/settings', requireAuth, requireRole('owner'), async (req, re
         upiId: cleanUpi,
         accountHolderName: cleanName,
         qrImageUrl: qrImageUrl || null,
+        paymentLink: paymentLink || null,
+        lateFee: Number(lateFee) || 0,
+        gracePeriod: Number(gracePeriod) || 0,
       },
     });
   } catch (error) {

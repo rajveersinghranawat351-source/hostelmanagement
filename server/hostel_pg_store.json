@@ -5,7 +5,7 @@
       "name": "Rajesh Sharma",
       "email": "owner@sunrise.com",
       "mobile": "9876543210",
-      "password_hash": "$2b$10$.x/s1PamTnTrQeLGMSErceB1jtkR6QczZcOohJ7M2CO1sVHTe2i3G",
+      "password_hash": "$2b$10$f.CUlgqbW9TSN6bWqmkusesxN0/mQb./424qnUrR6HurHzTeQAPFC",
       "role": "owner",
       "created_at": "2026-08-25T10:00:00.000Z"
     },
@@ -14,7 +14,7 @@
       "name": "Rajesh Sharma",
       "email": "owner@hostel.com",
       "mobile": "9876543210",
-      "password_hash": "$2b$10$.x/s1PamTnTrQeLGMSErceB1jtkR6QczZcOohJ7M2CO1sVHTe2i3G",
+      "password_hash": "$2b$10$f.CUlgqbW9TSN6bWqmkusesxN0/mQb./424qnUrR6HurHzTeQAPFC",
       "role": "owner",
       "created_at": "2026-08-25T10:00:00.000Z"
     },
@@ -23,7 +23,7 @@
       "name": "Abhay Shekhawat",
       "email": "abhay@example.com",
       "mobile": "9123456780",
-      "password_hash": "$2b$10$4HZdbBIHmpmcmtvnf1gVQexo/pytKFmr1h17c8Hrs1raBUlgIEttS",
+      "password_hash": "$2b$10$qA2L88vqoXaUh.d/19NzIuwwVvbkJ3x9FAHP/f8f..fd3TqVyknSC",
       "role": "student",
       "created_at": "2026-08-25T10:00:00.000Z"
     },
@@ -32,7 +32,7 @@
       "name": "Rahul Verma",
       "email": "student@hostel.com",
       "mobile": "9123456780",
-      "password_hash": "$2b$10$4HZdbBIHmpmcmtvnf1gVQexo/pytKFmr1h17c8Hrs1raBUlgIEttS",
+      "password_hash": "$2b$10$qA2L88vqoXaUh.d/19NzIuwwVvbkJ3x9FAHP/f8f..fd3TqVyknSC",
       "role": "student",
       "created_at": "2026-08-25T10:00:00.000Z"
     },
@@ -168,6 +168,14 @@
       "type": "🎉 New Admission with Paid Fee: Rahul Verma submitted KYC for Room 302. Ref: ADM_PAY_1787748319496",
       "read": 0,
       "created_at": "2026-08-26T12:45:19.511Z"
+    },
+    {
+      "id": "notif_oyIPgYT7v6",
+      "owner_id": "usr_owner_demo_01",
+      "student_id": "prof_demo_abhay",
+      "type": "💰 Room Fee Received: ₹8,500 paid by Abhay Shekhawat (Room 204). UTR: RENT_PAY_1787748630910",
+      "read": 0,
+      "created_at": "2026-08-26T12:50:30.915Z"
     }
   ],
   "owner_payment_settings": [
@@ -259,6 +267,19 @@
       "status": "2026-08-26T12:45:19.498Z",
       "paid_at": null,
       "created_at": "2026-08-26T12:45:19.511Z"
+    },
+    {
+      "id": "bill_H0NIS8LgTV",
+      "tenant_id": "prof_demo_abhay",
+      "user_id": "usr_student_demo_01",
+      "owner_id": "usr_owner_demo_01",
+      "property_id": "prop_demo_01",
+      "billing_period": "August 2026",
+      "amount": 8500,
+      "due_date": "2026-08-09",
+      "status": "paid",
+      "paid_at": "2026-08-26T12:50:30.911Z",
+      "created_at": "2026-08-26T12:50:30.912Z"
     }
   ],
   "payment_transactions": [
@@ -369,6 +390,24 @@
       "payment_time": "06:15 pm",
       "note": "",
       "created_at": "2026-08-26T12:45:19.511Z"
+    },
+    {
+      "id": "pay_iYC3Vj4p7d",
+      "tenant_id": "prof_demo_abhay",
+      "user_id": "usr_student_demo_01",
+      "owner_id": "usr_owner_demo_01",
+      "property_id": "prop_demo_01",
+      "billing_id": "bill_H0NIS8LgTV",
+      "billing_period": "August 2026 Room Fee",
+      "amount": 8500,
+      "status": "success",
+      "payment_provider": "UPI",
+      "transaction_id": "RENT_PAY_1787748630910",
+      "payment_reference": "RENT_PAY_1787748630910",
+      "payment_date": "2026-08-26",
+      "payment_time": "06:20 pm",
+      "note": "September Room Rent",
+      "created_at": "2026-08-26T12:50:30.912Z"
     }
   ]
 }

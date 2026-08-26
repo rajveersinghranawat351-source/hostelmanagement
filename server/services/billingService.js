@@ -41,7 +41,7 @@ function calculateNextDueDate(currentDueDateStr, targetDay = 5) {
 }
 
 /**
- * Determines current billing status for a tenant
+ * Determines current billing status for a tenant with rich countdown text
  */
 function evaluateFeeStatus(dueDateStr, lastPaidDateStr) {
   const now = new Date();
@@ -57,7 +57,6 @@ function evaluateFeeStatus(dueDateStr, lastPaidDateStr) {
   let isPaid = false;
   if (lastPaidDateStr) {
     const lastPaid = parseDate(lastPaidDateStr);
-    // If paid on or after due date or paid in current month/cycle
     if (lastPaid.getTime() >= dueDate.getTime()) {
       isPaid = true;
     }
@@ -66,7 +65,9 @@ function evaluateFeeStatus(dueDateStr, lastPaidDateStr) {
   if (isPaid) {
     return {
       status: 'paid',
-      label: 'Paid',
+      label: 'Paid ✓',
+      countdownText: 'All dues paid for this cycle ✓',
+      daysRemaining: 0,
       overdueDays: 0,
       isDueToday: false,
     };
@@ -75,7 +76,9 @@ function evaluateFeeStatus(dueDateStr, lastPaidDateStr) {
   if (diffDays > 0) {
     return {
       status: 'overdue',
-      label: `Overdue by ${diffDays} day${diffDays > 1 ? 's' : ''}`,
+      label: 'Overdue',
+      countdownText: `${diffDays} Day${diffDays > 1 ? 's' : ''} Overdue`,
+      daysRemaining: -diffDays,
       overdueDays: diffDays,
       isDueToday: false,
     };
@@ -85,15 +88,21 @@ function evaluateFeeStatus(dueDateStr, lastPaidDateStr) {
     return {
       status: 'due',
       label: 'Due Today',
+      countdownText: 'Due Today',
+      daysRemaining: 0,
       overdueDays: 0,
       isDueToday: true,
     };
   }
 
   const daysLeft = Math.abs(diffDays);
+  const countdownText = daysLeft === 1 ? 'Tomorrow' : `${daysLeft} Days Remaining`;
+
   return {
     status: 'due',
-    label: `Due in ${daysLeft} day${daysLeft > 1 ? 's' : ''}`,
+    label: 'Due',
+    countdownText,
+    daysRemaining: daysLeft,
     overdueDays: 0,
     isDueToday: false,
   };

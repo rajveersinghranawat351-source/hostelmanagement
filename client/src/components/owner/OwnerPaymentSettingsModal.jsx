@@ -9,7 +9,10 @@ import {
   Building2,
   Upload,
   Image as ImageIcon,
-  Trash2
+  Trash2,
+  Link as LinkIcon,
+  Clock,
+  DollarSign
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { api } from '../../services/api';
@@ -20,6 +23,10 @@ export default function OwnerPaymentSettingsModal({ onClose, onSaved }) {
   const [upiId, setUpiId] = useState('');
   const [accountHolderName, setAccountHolderName] = useState('');
   const [qrImageUrl, setQrImageUrl] = useState('');
+  const [paymentLink, setPaymentLink] = useState('');
+  const [gracePeriod, setGracePeriod] = useState('0');
+  const [lateFee, setLateFee] = useState('0');
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingQr, setUploadingQr] = useState(false);
@@ -36,6 +43,9 @@ export default function OwnerPaymentSettingsModal({ onClose, onSaved }) {
         setUpiId(res.settings.upi_id || res.settings.upiId || '');
         setAccountHolderName(res.settings.account_holder_name || res.settings.accountHolderName || '');
         setQrImageUrl(res.settings.qr_image_url || res.settings.qrImageUrl || '');
+        setPaymentLink(res.settings.payment_link || res.settings.paymentLink || '');
+        setGracePeriod(String(res.settings.grace_period || res.settings.gracePeriod || '0'));
+        setLateFee(String(res.settings.late_fee || res.settings.lateFee || '0'));
       }
     } catch (_) {
       showError('Failed to load existing UPI settings.');
@@ -61,7 +71,7 @@ export default function OwnerPaymentSettingsModal({ onClose, onSaved }) {
       const res = await api.uploadOwnerPaymentQR(formData);
       if (res.qrImageUrl) {
         setQrImageUrl(res.qrImageUrl);
-        showSuccess('Payment QR uploaded to Supabase Storage!');
+        showSuccess('Payment QR uploaded successfully!');
       }
     } catch (err) {
       showError(err.message || 'Failed to upload QR image.');
@@ -84,6 +94,9 @@ export default function OwnerPaymentSettingsModal({ onClose, onSaved }) {
         upiId: upiId.trim(),
         accountHolderName: accountHolderName.trim(),
         qrImageUrl: qrImageUrl || null,
+        paymentLink: paymentLink.trim() || null,
+        gracePeriod: Number(gracePeriod) || 0,
+        lateFee: Number(lateFee) || 0,
       });
       showSuccess(res.message || 'Payment settings saved successfully!');
       if (onSaved) onSaved(res.settings);
@@ -106,8 +119,8 @@ export default function OwnerPaymentSettingsModal({ onClose, onSaved }) {
               <CreditCard className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold font-heading">Owner Payment Settings</h3>
-              <p className="text-xs text-emerald-300/80">Configure UPI & Custom QR for tenant fee payments</p>
+              <h3 className="text-base font-bold font-heading">Owner Payment & Fee Settings</h3>
+              <p className="text-xs text-emerald-300/80">Configure UPI, QR standee & payment links</p>
             </div>
           </div>
           <button
@@ -139,7 +152,7 @@ export default function OwnerPaymentSettingsModal({ onClose, onSaved }) {
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500 font-mono transition"
               />
               <p className="text-[11px] text-slate-400 mt-1">
-                Tenants will scan this UPI QR or copy this UPI ID to pay their room rent.
+                Students will scan this UPI QR or copy this UPI ID to pay their room rent.
               </p>
             </div>
 
@@ -154,6 +167,26 @@ export default function OwnerPaymentSettingsModal({ onClose, onSaved }) {
                 placeholder="e.g. Silver Heights PG & Hostel"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500 transition"
               />
+            </div>
+
+            {/* PAYMENT GATEWAY / ONLINE PAYMENT LINK (Optional) */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Payment Gateway / Payment Link (Optional)
+              </label>
+              <div className="relative">
+                <LinkIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="url"
+                  value={paymentLink}
+                  onChange={(e) => setPaymentLink(e.target.value)}
+                  placeholder="https://pages.razorpay.com/yourpgrent"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500 transition"
+                />
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Provide Razorpay / Cashfree / Stripe payment link for direct online card/netbanking payments.
+              </p>
             </div>
 
             {/* QR CODE IMAGE UPLOAD TO SUPABASE STORAGE */}
@@ -172,7 +205,7 @@ export default function OwnerPaymentSettingsModal({ onClose, onSaved }) {
                     />
                     <div>
                       <span className="text-xs font-bold text-slate-800 block">Custom QR Attached ✓</span>
-                      <span className="text-[11px] text-emerald-600">Saved to Supabase Storage</span>
+                      <span className="text-[11px] text-emerald-600">Saved to Cloud Storage</span>
                     </div>
                   </div>
 
@@ -197,7 +230,7 @@ export default function OwnerPaymentSettingsModal({ onClose, onSaved }) {
                   {uploadingQr ? (
                     <>
                       <Loader2 className="w-5 h-5 text-emerald-600 animate-spin" />
-                      <span className="text-xs font-semibold text-emerald-600">Uploading to Supabase...</span>
+                      <span className="text-xs font-semibold text-emerald-600">Uploading QR Standee...</span>
                     </>
                   ) : (
                     <>
@@ -210,10 +243,40 @@ export default function OwnerPaymentSettingsModal({ onClose, onSaved }) {
               )}
             </div>
 
+            {/* GRACE PERIOD & LATE FEE (Optional) */}
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Grace Period (Days)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="15"
+                  value={gracePeriod}
+                  onChange={(e) => setGracePeriod(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Late Fee Amount (₹)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={lateFee}
+                  onChange={(e) => setLateFee(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+            </div>
+
             <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900 text-xs flex items-start gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <p>
-                Payments go directly to your bank account via UPI. The app handles reminders, tracking, and digital receipt generation.
+                Updated settings will immediately reflect in all student "My Rent" sections for this hostel.
               </p>
             </div>
 
