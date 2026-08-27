@@ -11,8 +11,9 @@ const jsonDbPath = isServerless ? path.join('/tmp', 'hostel_pg_store.json') : pa
 const uploadsDir = path.join(baseDir, 'uploads');
 const aadhaarDir = path.join(uploadsDir, 'aadhaar');
 const faceDir = path.join(uploadsDir, 'face_photos');
+const receiptsDir = path.join(uploadsDir, 'receipts');
 
-[uploadsDir, aadhaarDir, faceDir].forEach((dir) => {
+[uploadsDir, aadhaarDir, faceDir, receiptsDir].forEach((dir) => {
   try {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -33,19 +34,37 @@ const store = {
   payment_transactions: [],
 };
 
-// Try loading from persisted JSON file if present
+// Try loading from persisted JSON file or bundled seed file
 try {
+  const bundledDbPath = path.join(__dirname, 'hostel_pg_store.json');
+  let fileToLoad = null;
   if (fs.existsSync(jsonDbPath)) {
-    const loaded = JSON.parse(fs.readFileSync(jsonDbPath, 'utf8'));
-    if (Array.isArray(loaded.users)) store.users = loaded.users;
-    if (Array.isArray(loaded.properties)) store.properties = loaded.properties;
-    if (Array.isArray(loaded.student_profiles)) store.student_profiles = loaded.student_profiles;
-    if (Array.isArray(loaded.notifications)) store.notifications = loaded.notifications;
-    if (Array.isArray(loaded.owner_payment_settings)) store.owner_payment_settings = loaded.owner_payment_settings;
-    if (Array.isArray(loaded.monthly_billings)) store.monthly_billings = loaded.monthly_billings;
-    if (Array.isArray(loaded.payment_transactions)) store.payment_transactions = loaded.payment_transactions;
+    fileToLoad = jsonDbPath;
+  } else if (fs.existsSync(bundledDbPath)) {
+    fileToLoad = bundledDbPath;
+    if (isServerless) {
+      try {
+        fs.copyFileSync(bundledDbPath, jsonDbPath);
+      } catch (_) {}
+    }
   }
-} catch (_) {}
+
+  if (fileToLoad) {
+    const raw = fs.readFileSync(fileToLoad, 'utf8');
+    if (raw && raw.trim()) {
+      const loaded = JSON.parse(raw);
+      if (Array.isArray(loaded.users)) store.users = loaded.users;
+      if (Array.isArray(loaded.properties)) store.properties = loaded.properties;
+      if (Array.isArray(loaded.student_profiles)) store.student_profiles = loaded.student_profiles;
+      if (Array.isArray(loaded.notifications)) store.notifications = loaded.notifications;
+      if (Array.isArray(loaded.owner_payment_settings)) store.owner_payment_settings = loaded.owner_payment_settings;
+      if (Array.isArray(loaded.monthly_billings)) store.monthly_billings = loaded.monthly_billings;
+      if (Array.isArray(loaded.payment_transactions)) store.payment_transactions = loaded.payment_transactions;
+    }
+  }
+} catch (err) {
+  console.warn('[DB Init Notice]:', err.message);
+}
 
 // Helper to persist store to file safely
 const persist = () => {
@@ -107,7 +126,8 @@ const ensureSeeds = () => {
     }
   });
 
-  if (store.properties.length === 0) {
+  const demoProp = store.properties.find((p) => p.id === 'prop_demo_01' || p.owner_id === 'usr_owner_demo_01');
+  if (!demoProp) {
     store.properties.push({
       id: 'prop_demo_01',
       owner_id: 'usr_owner_demo_01',
@@ -127,7 +147,8 @@ const ensureSeeds = () => {
   }
 
   // Seed demo owner payment UPI settings
-  if (store.owner_payment_settings.length === 0) {
+  const demoSettings = store.owner_payment_settings.find((s) => s.owner_id === 'usr_owner_demo_01');
+  if (!demoSettings) {
     store.owner_payment_settings.push({
       id: 'pay_set_01',
       owner_id: 'usr_owner_demo_01',
@@ -292,45 +313,48 @@ function executeSql(sql, params) {
   if (s.includes('from users where id = ?')) {
     const id = params[0];
     const user = store.users.find((u) => u.id === id);
-    return user
-      ? [
-          {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            mobile: user.mobile,
-            role: user.role,
-            created_at: user.created_at,
-          },
-        ]
-      : [];
+    return user ? [{ ...user }] : [];
   }
 
   // 2. Properties queries
-  if (s.includes('from properties p join users u on p.owner_id = u.id where p.qr_identifier = ?')) {
-    const qr = (params[0] || '').trim();
-    const prop = store.properties.find((p) => p.qr_identifier === qr);
-    if (!prop) return [];
+  if (s.includes('from properties')) {
+    // Lookup by owner_id
+    if (s.includes('owner_id = ?')) {
+      const ownerId = params[0];
+      const prop = store.properties.find((p) => p.owner_id === ownerId);
+      if (!prop) return [];
+      const owner = store.users.find((u) => u.id === prop.owner_id);
+      return [{ ...prop, owner_name: owner ? owner.name : 'PG Owner' }];
+    }
+
+    // Lookup by id or qr_identifier or alias
+    const searchTerms = params.map((p) => String(p || '').trim().toLowerCase()).filter(Boolean);
+    const prop = store.properties.find((p) => {
+      const pId = (p.id || '').toLowerCase();
+      const pQr = (p.qr_identifier || '').toLowerCase();
+      const pName = (p.property_name || '').toLowerCase();
+
+      return searchTerms.some((term) => {
+        if (!term) return false;
+        if (pId === term || pQr === term) return true;
+        if ((term === 'pg_sunrise_boys_2026' || term === 'qr_hstl_jaipur_01') && (pId === 'prop_demo_01' || pQr.includes('sunrise') || pQr.includes('jaipur'))) return true;
+        return false;
+      });
+    });
+
+    if (!prop) {
+      if (params.length > 0 && typeof params[0] === 'string') {
+        const directMatch = store.properties.find((p) => p.id === params[0] || p.qr_identifier === params[0]);
+        if (directMatch) {
+          const owner = store.users.find((u) => u.id === directMatch.owner_id);
+          return [{ ...directMatch, owner_name: owner ? owner.name : 'PG Owner' }];
+        }
+      }
+      return [];
+    }
+
     const owner = store.users.find((u) => u.id === prop.owner_id);
     return [{ ...prop, owner_name: owner ? owner.name : 'PG Owner' }];
-  }
-
-  if (s.includes('from properties where owner_id = ?')) {
-    const ownerId = params[0];
-    const prop = store.properties.find((p) => p.owner_id === ownerId);
-    return prop ? [{ ...prop }] : [];
-  }
-
-  if (s.includes('from properties where qr_identifier = ?')) {
-    const qr = (params[0] || '').trim();
-    const prop = store.properties.find((p) => p.qr_identifier === qr);
-    return prop ? [{ ...prop }] : [];
-  }
-
-  if (s.includes('from properties where id = ?')) {
-    const id = params[0];
-    const prop = store.properties.find((p) => p.id === id);
-    return prop ? [{ ...prop }] : [];
   }
 
   // 3. Owner Payment Settings queries
@@ -384,19 +408,37 @@ function executeSql(sql, params) {
   }
 
   // 5. Monthly Billings queries
-  if (s.includes('from monthly_billings where tenant_id = ? and billing_period = ?')) {
-    const tenantId = params[0];
-    const period = params[1];
-    const bill = store.monthly_billings.find((b) => b.tenant_id === tenantId && b.billing_period === period);
+  if (s.includes('from monthly_billings where id = ?')) {
+    const id = params[0];
+    const bill = store.monthly_billings.find((b) => b.id === id);
     return bill ? [{ ...bill }] : [];
   }
 
-  if (s.includes('from monthly_billings where tenant_id = ?')) {
+  if (s.includes('from monthly_billings where tenant_id = ? and billing_period = ?')) {
+    const tenantId = params[0];
+    const period = (params[1] || '').trim().toLowerCase();
+    const bill = store.monthly_billings.find((b) => b.tenant_id === tenantId && (b.billing_period || '').trim().toLowerCase() === period);
+    return bill ? [{ ...bill }] : [];
+  }
+
+  if (s.includes('from monthly_billings where tenant_id = ?') || s.includes('from monthly_billings where user_id = ?')) {
     const tenantId = params[0];
     const list = store.monthly_billings
-      .filter((b) => b.tenant_id === tenantId)
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    return list;
+      .filter((b) => b.tenant_id === tenantId || b.user_id === tenantId)
+      .sort((a, b) => new Date(b.created_at || b.due_date) - new Date(a.created_at || a.due_date));
+    return list.map((b) => ({ ...b }));
+  }
+
+  if (s.includes('from monthly_billings where owner_id = ?') || s.includes('from monthly_billings where property_id = ?')) {
+    const ownerOrPropId = params[0];
+    const list = store.monthly_billings
+      .filter((b) => b.owner_id === ownerOrPropId || b.property_id === ownerOrPropId)
+      .sort((a, b) => new Date(b.created_at || b.due_date) - new Date(a.created_at || a.due_date));
+    return list.map((b) => ({ ...b }));
+  }
+
+  if (s.includes('from monthly_billings')) {
+    return [...store.monthly_billings].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
   }
 
   // 6. Student profiles queries
@@ -606,8 +648,10 @@ function executeRun(sql, params) {
       default_room,
       default_bed,
     ] = params;
-    store.properties.push({
-      id,
+
+    const existingIdx = store.properties.findIndex((p) => p.id === id || p.owner_id === owner_id);
+    const record = {
+      id: id || (existingIdx >= 0 ? store.properties[existingIdx].id : `prop_${Date.now()}`),
       owner_id,
       property_name,
       property_type,
@@ -615,13 +659,19 @@ function executeRun(sql, params) {
       contact,
       city: city || 'Jaipur, Rajasthan',
       image_url: image_url || null,
-      qr_identifier,
+      qr_identifier: qr_identifier || (existingIdx >= 0 ? store.properties[existingIdx].qr_identifier : `QR_${Date.now()}`),
       qr_status: qr_status || 'active',
       default_room: default_room || '204',
       default_bed: default_bed || 'B',
-      qr_created_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-    });
+      qr_created_at: existingIdx >= 0 ? store.properties[existingIdx].qr_created_at : new Date().toISOString(),
+      created_at: existingIdx >= 0 ? store.properties[existingIdx].created_at : new Date().toISOString(),
+    };
+
+    if (existingIdx >= 0) {
+      store.properties[existingIdx] = { ...store.properties[existingIdx], ...record };
+    } else {
+      store.properties.push(record);
+    }
     return 1;
   }
 
@@ -728,20 +778,52 @@ function executeRun(sql, params) {
 
   // 6. INSERT / UPDATE monthly_billings
   if (s.includes('into monthly_billings')) {
-    const [id, tenant_id, user_id, owner_id, property_id, billing_period, amount, due_date, status, paid_at] = params;
-    store.monthly_billings.push({
+    const [
       id,
       tenant_id,
       user_id,
       owner_id,
       property_id,
       billing_period,
-      amount: Number(amount),
+      amount,
       due_date,
+      status,
+      paid_at,
+      payment_method,
+      notes,
+      receipt_filename,
+      receipt_original_name,
+      receipt_mime_type,
+      receipt_size,
+    ] = params;
+
+    const existingIdx = store.monthly_billings.findIndex((b) => b.id === id || (b.tenant_id === tenant_id && (b.billing_period || '').toLowerCase() === (billing_period || '').toLowerCase()));
+    const record = {
+      id: id || `bill_${Date.now()}`,
+      tenant_id,
+      user_id: user_id || null,
+      owner_id: owner_id || null,
+      property_id: property_id || null,
+      billing_period: billing_period || 'Monthly Rent',
+      amount: Number(amount || 0),
+      due_date: due_date || new Date().toISOString().split('T')[0],
       status: status || 'due',
-      paid_at: paid_at || null,
-      created_at: new Date().toISOString(),
-    });
+      paid_at: paid_at || (status === 'paid' ? new Date().toISOString() : null),
+      payment_method: payment_method || (status === 'paid' ? 'UPI' : null),
+      notes: notes || '',
+      receipt_filename: receipt_filename || null,
+      receipt_original_name: receipt_original_name || null,
+      receipt_mime_type: receipt_mime_type || null,
+      receipt_size: receipt_size ? Number(receipt_size) : null,
+      created_at: existingIdx >= 0 ? store.monthly_billings[existingIdx].created_at : new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingIdx >= 0) {
+      store.monthly_billings[existingIdx] = { ...store.monthly_billings[existingIdx], ...record };
+    } else {
+      store.monthly_billings.push(record);
+    }
     return 1;
   }
 
@@ -750,10 +832,51 @@ function executeRun(sql, params) {
     const bill = store.monthly_billings.find((b) => b.id === id);
     if (bill) {
       bill.status = status;
-      bill.paid_at = paid_at || new Date().toISOString();
+      bill.paid_at = paid_at || (status === 'paid' ? new Date().toISOString() : null);
+      bill.updated_at = new Date().toISOString();
       return 1;
     }
     return 0;
+  }
+
+  if (s.includes('update monthly_billings set amount = ?') || s.includes('update monthly_billings set billing_period = ?')) {
+    // General update for amount, due_date, status, notes
+    const [amount, due_date, status, notes, id] = params;
+    const bill = store.monthly_billings.find((b) => b.id === id);
+    if (bill) {
+      if (amount !== undefined) bill.amount = Number(amount);
+      if (due_date !== undefined) bill.due_date = due_date;
+      if (status !== undefined) {
+        bill.status = status;
+        if (status === 'paid' && !bill.paid_at) bill.paid_at = new Date().toISOString();
+        if (status !== 'paid') bill.paid_at = null;
+      }
+      if (notes !== undefined) bill.notes = notes;
+      bill.updated_at = new Date().toISOString();
+      return 1;
+    }
+    return 0;
+  }
+
+  if (s.includes('update monthly_billings set receipt_filename = ?')) {
+    const [receipt_filename, receipt_original_name, receipt_mime_type, receipt_size, id] = params;
+    const bill = store.monthly_billings.find((b) => b.id === id);
+    if (bill) {
+      bill.receipt_filename = receipt_filename;
+      bill.receipt_original_name = receipt_original_name;
+      bill.receipt_mime_type = receipt_mime_type;
+      bill.receipt_size = receipt_size ? Number(receipt_size) : null;
+      bill.updated_at = new Date().toISOString();
+      return 1;
+    }
+    return 0;
+  }
+
+  if (s.includes('delete from monthly_billings where id = ?')) {
+    const id = params[0];
+    const initialLen = store.monthly_billings.length;
+    store.monthly_billings = store.monthly_billings.filter((b) => b.id !== id);
+    return store.monthly_billings.length < initialLen ? 1 : 0;
   }
 
   // 7. INSERT INTO student_profiles
@@ -798,9 +921,13 @@ function executeRun(sql, params) {
     const now = new Date();
     const defaultDueDate = new Date(now.getFullYear(), now.getMonth(), rent_due_day || 5).toISOString().split('T')[0];
 
-    store.student_profiles.push({
-      id,
-      student_id_code,
+    const existingIdx = store.student_profiles.findIndex(
+      (sp) => sp.id === id || (sp.user_id === user_id && sp.property_id === property_id)
+    );
+
+    const record = {
+      id: id || (existingIdx >= 0 ? store.student_profiles[existingIdx].id : `prof_${Date.now()}`),
+      student_id_code: student_id_code || (existingIdx >= 0 ? store.student_profiles[existingIdx].student_id_code : `STU-${Date.now()}`),
       user_id,
       property_id,
       owner_id,
@@ -825,18 +952,24 @@ function executeRun(sql, params) {
       stay_duration,
       room_number,
       bed,
-      face_photo,
-      aadhaar_document,
-      status: status || 'pending',
+      face_photo: face_photo || (existingIdx >= 0 ? store.student_profiles[existingIdx].face_photo : null),
+      aadhaar_document: aadhaar_document || (existingIdx >= 0 ? store.student_profiles[existingIdx].aadhaar_document : null),
+      status: status || (existingIdx >= 0 ? store.student_profiles[existingIdx].status : 'pending'),
       monthly_fee: monthly_fee ? Number(monthly_fee) : 8000,
       rent_due_day: rent_due_day ? Number(rent_due_day) : 5,
-      last_paid_date: last_paid_date || null,
-      next_due_date: next_due_date || defaultDueDate,
-      payment_status: payment_status || 'due',
-      joining_date: new Date().toISOString().split('T')[0],
-      created_at: new Date().toISOString(),
+      last_paid_date: last_paid_date || (existingIdx >= 0 ? store.student_profiles[existingIdx].last_paid_date : null),
+      next_due_date: next_due_date || (existingIdx >= 0 ? store.student_profiles[existingIdx].next_due_date : defaultDueDate),
+      payment_status: payment_status || (existingIdx >= 0 ? store.student_profiles[existingIdx].payment_status : 'due'),
+      joining_date: existingIdx >= 0 ? store.student_profiles[existingIdx].joining_date : new Date().toISOString().split('T')[0],
+      created_at: existingIdx >= 0 ? store.student_profiles[existingIdx].created_at : new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    });
+    };
+
+    if (existingIdx >= 0) {
+      store.student_profiles[existingIdx] = { ...store.student_profiles[existingIdx], ...record };
+    } else {
+      store.student_profiles.push(record);
+    }
     return 1;
   }
 
@@ -922,4 +1055,7 @@ module.exports = {
   uploadsDir,
   aadhaarDir,
   faceDir,
+  receiptsDir,
+  store,
+  persist,
 };

@@ -34,19 +34,37 @@ const store = {
   payment_transactions: [],
 };
 
-// Try loading from persisted JSON file if present
+// Try loading from persisted JSON file or bundled seed file
 try {
+  const bundledDbPath = path.join(__dirname, 'hostel_pg_store.json');
+  let fileToLoad = null;
   if (fs.existsSync(jsonDbPath)) {
-    const loaded = JSON.parse(fs.readFileSync(jsonDbPath, 'utf8'));
-    if (Array.isArray(loaded.users)) store.users = loaded.users;
-    if (Array.isArray(loaded.properties)) store.properties = loaded.properties;
-    if (Array.isArray(loaded.student_profiles)) store.student_profiles = loaded.student_profiles;
-    if (Array.isArray(loaded.notifications)) store.notifications = loaded.notifications;
-    if (Array.isArray(loaded.owner_payment_settings)) store.owner_payment_settings = loaded.owner_payment_settings;
-    if (Array.isArray(loaded.monthly_billings)) store.monthly_billings = loaded.monthly_billings;
-    if (Array.isArray(loaded.payment_transactions)) store.payment_transactions = loaded.payment_transactions;
+    fileToLoad = jsonDbPath;
+  } else if (fs.existsSync(bundledDbPath)) {
+    fileToLoad = bundledDbPath;
+    if (isServerless) {
+      try {
+        fs.copyFileSync(bundledDbPath, jsonDbPath);
+      } catch (_) {}
+    }
   }
-} catch (_) {}
+
+  if (fileToLoad) {
+    const raw = fs.readFileSync(fileToLoad, 'utf8');
+    if (raw && raw.trim()) {
+      const loaded = JSON.parse(raw);
+      if (Array.isArray(loaded.users)) store.users = loaded.users;
+      if (Array.isArray(loaded.properties)) store.properties = loaded.properties;
+      if (Array.isArray(loaded.student_profiles)) store.student_profiles = loaded.student_profiles;
+      if (Array.isArray(loaded.notifications)) store.notifications = loaded.notifications;
+      if (Array.isArray(loaded.owner_payment_settings)) store.owner_payment_settings = loaded.owner_payment_settings;
+      if (Array.isArray(loaded.monthly_billings)) store.monthly_billings = loaded.monthly_billings;
+      if (Array.isArray(loaded.payment_transactions)) store.payment_transactions = loaded.payment_transactions;
+    }
+  }
+} catch (err) {
+  console.warn('[DB Init Notice]:', err.message);
+}
 
 // Helper to persist store to file safely
 const persist = () => {

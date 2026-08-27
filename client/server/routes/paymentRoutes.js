@@ -1,8 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
 const multer = require('multer');
 const { nanoid } = require('../utils');
-const { db } = require('../db');
+const { db, receiptsDir, uploadsDir } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const {
   calculateNextDueDate,
@@ -18,16 +20,62 @@ const {
   syncPaymentTransaction,
 } = require('../services/supabasePaymentService');
 
-const upload = multer({
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+// Multer Storage Configuration for QR codes
+const qrUpload = multer({
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {
       cb(null, true);
     } else {
-      cb(new Error('Only image files are allowed for UPI QR codes.'), false);
+      cb(new Error('Only image files (PNG, JPG, JPEG) are allowed for UPI QR codes.'), false);
     }
   },
 });
+
+// Multer Storage Configuration for Rent Receipts & Invoices
+const receiptStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, receiptsDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = (path.extname(file.originalname) || '.pdf').toLowerCase();
+    const uniqueName = `receipt_${Date.now()}_${nanoid(10)}${ext}`;
+    cb(null, uniqueName);
+  },
+});
+
+const receiptUpload = multer({
+  storage: receiptStorage,
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedExtensions = /jpeg|jpg|png|webp|pdf/;
+    const extname = allowedExtensions.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedExtensions.test(file.mimetype) || file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf';
+    
+    if (extname || mimetype) {
+      return cb(null, true);
+    }
+    cb(new Error('Invalid document type. Only PDF documents and JPG/PNG/WebP images are supported.'));
+  },
+});
+
+// Helper for Base64 receipt payloads
+function saveBase64Receipt(dataUri, prefix) {
+  if (!dataUri || !dataUri.startsWith('data:')) return null;
+  const matches = dataUri.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+  if (!matches || matches.length !== 3) return null;
+
+  const ext = matches[1].includes('pdf') ? '.pdf' : matches[1].includes('png') ? '.png' : '.jpg';
+  const filename = `${prefix}_${Date.now()}_${nanoid(10)}${ext}`;
+  const filePath = path.join(receiptsDir, filename);
+  fs.writeFileSync(filePath, Buffer.from(matches[2], 'base64'));
+  return {
+    filename,
+    originalName: `receipt_${Date.now()}${ext}`,
+    mimeType: matches[1],
+    size: Buffer.byteLength(matches[2], 'base64'),
+  };
+}
 
 // ==========================================
 // TENANT / STUDENT PAYMENT ROUTES
@@ -67,6 +115,14 @@ router.get(['/tenant/fee-status', '/fee-status', '/my-rent'], requireAuth, requi
 
     const feeStatusInfo = evaluateFeeStatus(currentDueDate, student.last_paid_date);
 
+    // Look for latest monthly bill record
+    const latestBill = db.prepare(`
+      SELECT * FROM monthly_billings
+      WHERE tenant_id = ? OR user_id = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).get(student.id, student.user_id);
+
     const txnRef = `FEE-${student.student_id_code || student.id.slice(-6)}-${Date.now().toString().slice(-6)}`;
     const upiIntentUrl = generateUpiIntentUrl(
       upiId,
@@ -92,12 +148,14 @@ router.get(['/tenant/fee-status', '/fee-status', '/my-rent'], requireAuth, requi
         monthlyFee,
         dueDate: currentDueDate,
         lastPaidDate: student.last_paid_date,
-        status: feeStatusInfo.status,
-        statusLabel: feeStatusInfo.label,
+        status: (student.payment_status === 'paid' || feeStatusInfo.status === 'paid') ? 'paid' : feeStatusInfo.status,
+        statusLabel: (student.payment_status === 'paid' || feeStatusInfo.status === 'paid') ? 'Paid ✓' : feeStatusInfo.label,
         countdownText: feeStatusInfo.countdownText,
         daysRemaining: feeStatusInfo.daysRemaining,
         overdueDays: feeStatusInfo.overdueDays,
         isDueToday: feeStatusInfo.isDueToday,
+        receiptDocumentUrl: latestBill?.receipt_filename ? `/api/documents/receipt/${latestBill.id}` : null,
+        latestBillId: latestBill?.id || null,
       },
       paymentDetails: {
         upiId,
@@ -124,14 +182,23 @@ router.get(['/tenant/history', '/tenant-history', '/my-history'], requireAuth, r
     `).get(req.user.id);
 
     if (!student) {
-      return res.json({ history: [] });
+      return res.json({ history: [], bills: [] });
     }
 
     const history = db.prepare(`
-      SELECT * FROM payment_transactions WHERE tenant_id = ? ORDER BY created_at DESC
-    `).all(student.id);
+      SELECT * FROM payment_transactions WHERE tenant_id = ? OR user_id = ? ORDER BY created_at DESC
+    `).all(student.id, req.user.id);
 
-    return res.json({ history });
+    const bills = db.prepare(`
+      SELECT * FROM monthly_billings WHERE tenant_id = ? OR user_id = ? ORDER BY created_at DESC
+    `).all(student.id, req.user.id);
+
+    const enrichedBills = bills.map((b) => ({
+      ...b,
+      receiptUrl: b.receipt_filename ? `/api/documents/receipt/${b.id}` : null,
+    }));
+
+    return res.json({ history, bills: enrichedBills });
   } catch (error) {
     console.error('Payment history error:', error);
     return res.status(500).json({ error: 'Failed to retrieve payment history.' });
@@ -274,7 +341,7 @@ router.post(['/tenant/verify-and-record', '/verify-and-record', '/pay'], require
 });
 
 // ==========================================
-// OWNER PAYMENT ROUTES
+// OWNER PAYMENT & RENT ROUTES
 // ==========================================
 
 // 4. GET owner dashboard
@@ -320,11 +387,19 @@ router.get(['/owner/dashboard', '/dashboard', '/'], requireAuth, requireRole('ow
         LIMIT 1
       `).get(s.id, s.user_id || s.id);
 
+      const latestBill = db.prepare(`
+        SELECT * FROM monthly_billings
+        WHERE tenant_id = ? OR user_id = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+      `).get(s.id, s.user_id || s.id);
+
+      const isMarkedPaid = latestBill?.status === 'paid' || s.payment_status === 'paid';
       const feeStatusInfo = evaluateFeeStatus(currentDueDate, s.last_paid_date || latestPayment?.payment_date);
 
-      if (feeStatusInfo.status === 'paid' || s.payment_status === 'paid') {
+      if (isMarkedPaid || feeStatusInfo.status === 'paid') {
         paidCount++;
-        totalCollectedThisMonth += monthlyFee;
+        totalCollectedThisMonth += (latestBill?.amount || monthlyFee);
       } else if (feeStatusInfo.status === 'overdue') {
         overdueCount++;
       } else {
@@ -333,6 +408,7 @@ router.get(['/owner/dashboard', '/dashboard', '/'], requireAuth, requireRole('ow
 
       return {
         id: s.id,
+        userId: s.user_id,
         fullName: s.full_name,
         studentIdCode: s.student_id_code,
         roomNumber: s.room_number || '204',
@@ -340,14 +416,19 @@ router.get(['/owner/dashboard', '/dashboard', '/'], requireAuth, requireRole('ow
         mobile: s.mobile,
         monthlyFee,
         rentDueDay: s.rent_due_day || 5,
-        dueDate: currentDueDate,
+        dueDate: latestBill?.due_date || currentDueDate,
         lastPaidDate: s.last_paid_date || (latestPayment ? latestPayment.payment_date : null),
         lastPaymentAmount: latestPayment ? latestPayment.amount : null,
-        status: (feeStatusInfo.status === 'paid' || s.payment_status === 'paid') ? 'paid' : feeStatusInfo.status,
-        statusLabel: (feeStatusInfo.status === 'paid' || s.payment_status === 'paid') ? 'Paid ✓' : feeStatusInfo.label,
-        countdownText: feeStatusInfo.countdownText,
+        status: isMarkedPaid ? 'paid' : feeStatusInfo.status,
+        statusLabel: isMarkedPaid ? 'Paid ✓' : feeStatusInfo.label,
+        countdownText: isMarkedPaid ? 'Paid ✓' : feeStatusInfo.countdownText,
         overdueDays: feeStatusInfo.overdueDays,
         hasPayments: Boolean(latestPayment),
+        latestBillId: latestBill?.id || null,
+        latestBillingPeriod: latestBill?.billing_period || getBillingPeriodName(currentDueDate),
+        receiptDocumentUrl: latestBill?.receipt_filename ? `/api/documents/receipt/${latestBill.id}` : null,
+        receiptOriginalName: latestBill?.receipt_original_name || null,
+        receiptFilename: latestBill?.receipt_filename || null,
       };
     });
 
@@ -369,7 +450,392 @@ router.get(['/owner/dashboard', '/dashboard', '/'], requireAuth, requireRole('ow
   }
 });
 
-// 5. GET & POST owner settings
+// 5. GET all owner rent bills
+router.get('/owner/rent/bills', requireAuth, requireRole('owner'), (req, res) => {
+  try {
+    const ownerId = req.user.id;
+    const bills = db.prepare(`
+      SELECT mb.*, sp.full_name AS student_name, sp.room_number, sp.bed, sp.mobile AS student_mobile
+      FROM monthly_billings mb
+      LEFT JOIN student_profiles sp ON mb.tenant_id = sp.id
+      WHERE mb.owner_id = ?
+      ORDER BY mb.created_at DESC
+    `).all(ownerId);
+
+    const enrichedBills = bills.map((b) => ({
+      ...b,
+      receiptUrl: b.receipt_filename ? `/api/documents/receipt/${b.id}` : null,
+    }));
+
+    return res.json({ bills: enrichedBills });
+  } catch (error) {
+    console.error('Fetch rent bills error:', error);
+    return res.status(500).json({ error: 'Failed to fetch rent bills.' });
+  }
+});
+
+// 6. POST add rent record for a student
+router.post('/owner/rent/add', requireAuth, requireRole('owner'), receiptUpload.single('receiptDocument'), (req, res) => {
+  try {
+    const { studentId, billingPeriod, amount, dueDate, status, paymentMethod, notes, receiptDocumentBase64 } = req.body;
+
+    if (!studentId) {
+      return res.status(400).json({ error: 'Please select a student/tenant.' });
+    }
+
+    const student = db.prepare(`
+      SELECT sp.*, p.owner_id as prop_owner_id, p.id as property_id
+      FROM student_profiles sp
+      LEFT JOIN properties p ON sp.property_id = p.id
+      WHERE sp.id = ?
+    `).get(studentId);
+
+    if (!student || (student.owner_id !== req.user.id && student.prop_owner_id !== req.user.id)) {
+      return res.status(403).json({ error: 'Access denied: Selected tenant does not belong to your property.' });
+    }
+
+    const now = new Date();
+    const period = (billingPeriod && billingPeriod.trim()) || getBillingPeriodName(dueDate || now);
+    const rentAmount = Number(amount) || Number(student.monthly_fee) || 8000;
+    const rentDueDate = dueDate || student.next_due_date || formatDate(now);
+    const rentStatus = (status && status.toLowerCase() === 'paid') ? 'paid' : 'due';
+
+    // Duplicate check for same student + billing period
+    const existingBill = db.prepare(`
+      SELECT * FROM monthly_billings
+      WHERE tenant_id = ? AND billing_period = ?
+    `).get(student.id, period);
+
+    if (existingBill) {
+      return res.status(409).json({
+        error: `A rent bill for ${period} already exists for ${student.full_name}. You can edit or update the existing record.`,
+        billId: existingBill.id,
+      });
+    }
+
+    let receiptFilename = null;
+    let receiptOriginalName = null;
+    let receiptMimeType = null;
+    let receiptSize = null;
+
+    if (req.file) {
+      receiptFilename = req.file.filename;
+      receiptOriginalName = req.file.originalname;
+      receiptMimeType = req.file.mimetype;
+      receiptSize = req.file.size;
+    } else if (receiptDocumentBase64) {
+      const saved = saveBase64Receipt(receiptDocumentBase64, 'receipt');
+      if (saved) {
+        receiptFilename = saved.filename;
+        receiptOriginalName = saved.originalName;
+        receiptMimeType = saved.mimeType;
+        receiptSize = saved.size;
+      }
+    }
+
+    const billId = `bill_${nanoid(10)}`;
+    const paidAt = rentStatus === 'paid' ? now.toISOString() : null;
+
+    db.prepare(`
+      INSERT INTO monthly_billings (
+        id, tenant_id, user_id, owner_id, property_id,
+        billing_period, amount, due_date, status, paid_at,
+        payment_method, notes, receipt_filename, receipt_original_name,
+        receipt_mime_type, receipt_size
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      billId,
+      student.id,
+      student.user_id,
+      req.user.id,
+      student.property_id,
+      period,
+      rentAmount,
+      rentDueDate,
+      rentStatus,
+      paidAt,
+      paymentMethod || (rentStatus === 'paid' ? 'Cash / Direct' : null),
+      notes || '',
+      receiptFilename,
+      receiptOriginalName,
+      receiptMimeType,
+      receiptSize
+    );
+
+    // If marked paid, create transaction & update student status
+    if (rentStatus === 'paid') {
+      const paymentId = `pay_${nanoid(10)}`;
+      const cleanTxnId = `RENT-${Date.now().toString().slice(-6)}-${nanoid(6).toUpperCase()}`;
+
+      db.prepare(`
+        INSERT INTO payment_transactions (
+          id, tenant_id, user_id, owner_id, property_id, billing_id, billing_period,
+          amount, status, payment_provider, transaction_id, payment_reference, payment_date, payment_time, note
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        paymentId,
+        student.id,
+        student.user_id,
+        req.user.id,
+        student.property_id,
+        billId,
+        period,
+        rentAmount,
+        'success',
+        paymentMethod || 'Owner Recorded',
+        cleanTxnId,
+        cleanTxnId,
+        formatDate(now),
+        now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
+        notes || `Rent bill recorded as paid for ${period}`
+      );
+
+      const nextDueDate = calculateNextDueDate(rentDueDate, student.rent_due_day || 5);
+      db.prepare(`
+        UPDATE student_profiles
+        SET last_paid_date = ?, next_due_date = ?, payment_status = 'paid'
+        WHERE id = ?
+      `).run(formatDate(now), nextDueDate, student.id);
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: `Rent bill of ₹${rentAmount.toLocaleString('en-IN')} for ${period} added successfully!`,
+      bill: {
+        id: billId,
+        tenantId: student.id,
+        billingPeriod: period,
+        amount: rentAmount,
+        dueDate: rentDueDate,
+        status: rentStatus,
+        receiptUrl: receiptFilename ? `/api/documents/receipt/${billId}` : null,
+      },
+    });
+  } catch (error) {
+    console.error('Add rent error:', error);
+    return res.status(500).json({ error: error.message || 'Failed to add rent record.' });
+  }
+});
+
+// 7. PUT update / edit rent record
+router.put('/owner/rent/:billId', requireAuth, requireRole('owner'), (req, res) => {
+  try {
+    const { billId } = req.params;
+    const { amount, dueDate, status, notes, billingPeriod } = req.body;
+
+    const bill = db.prepare('SELECT * FROM monthly_billings WHERE id = ?').get(billId);
+    if (!bill) {
+      return res.status(404).json({ error: 'Rent billing record not found.' });
+    }
+
+    if (bill.owner_id && bill.owner_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied: Bill does not belong to your property.' });
+    }
+
+    const updatedAmount = amount !== undefined ? Number(amount) : bill.amount;
+    const updatedDueDate = dueDate || bill.due_date;
+    const updatedStatus = status ? status.toLowerCase() : bill.status;
+    const updatedNotes = notes !== undefined ? notes : bill.notes;
+
+    db.prepare(`
+      UPDATE monthly_billings
+      SET amount = ?, due_date = ?, status = ?, notes = ?
+      WHERE id = ?
+    `).run(updatedAmount, updatedDueDate, updatedStatus, updatedNotes, billId);
+
+    // Update student payment status if needed
+    if (updatedStatus === 'paid') {
+      const student = db.prepare('SELECT * FROM student_profiles WHERE id = ?').get(bill.tenant_id);
+      if (student) {
+        const todayStr = formatDate(new Date());
+        const nextDueDate = calculateNextDueDate(updatedDueDate, student.rent_due_day || 5);
+        db.prepare(`
+          UPDATE student_profiles
+          SET last_paid_date = ?, next_due_date = ?, payment_status = 'paid'
+          WHERE id = ?
+        `).run(todayStr, nextDueDate, student.id);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: 'Rent bill updated successfully!',
+      bill: {
+        ...bill,
+        amount: updatedAmount,
+        due_date: updatedDueDate,
+        status: updatedStatus,
+        notes: updatedNotes,
+      },
+    });
+  } catch (error) {
+    console.error('Update rent error:', error);
+    return res.status(500).json({ error: 'Failed to update rent bill.' });
+  }
+});
+
+// 8. PATCH update status (Mark Paid / Mark Pending)
+router.patch('/owner/rent/:billId/status', requireAuth, requireRole('owner'), (req, res) => {
+  try {
+    const { billId } = req.params;
+    const { status, paymentMethod } = req.body;
+
+    if (!['paid', 'due', 'pending', 'overdue'].includes((status || '').toLowerCase())) {
+      return res.status(400).json({ error: 'Invalid status. Allowed: paid, due, pending, overdue.' });
+    }
+
+    const targetStatus = status.toLowerCase() === 'paid' ? 'paid' : 'due';
+    const bill = db.prepare('SELECT * FROM monthly_billings WHERE id = ?').get(billId);
+
+    if (!bill) {
+      return res.status(404).json({ error: 'Rent billing record not found.' });
+    }
+
+    if (bill.owner_id && bill.owner_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied: Bill does not belong to your property.' });
+    }
+
+    const now = new Date();
+    const paidAt = targetStatus === 'paid' ? now.toISOString() : null;
+
+    db.prepare(`
+      UPDATE monthly_billings
+      SET status = ?, paid_at = ?
+      WHERE id = ?
+    `).run(targetStatus, paidAt, billId);
+
+    const student = db.prepare('SELECT * FROM student_profiles WHERE id = ?').get(bill.tenant_id);
+    if (student) {
+      if (targetStatus === 'paid') {
+        const todayStr = formatDate(now);
+        const nextDueDate = calculateNextDueDate(bill.due_date, student.rent_due_day || 5);
+        db.prepare(`
+          UPDATE student_profiles
+          SET last_paid_date = ?, next_due_date = ?, payment_status = 'paid'
+          WHERE id = ?
+        `).run(todayStr, nextDueDate, student.id);
+      } else {
+        db.prepare(`
+          UPDATE student_profiles
+          SET payment_status = 'due'
+          WHERE id = ?
+        `).run(student.id);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Rent bill status updated to ${targetStatus === 'paid' ? 'Paid ✓' : 'Pending Dues'}.`,
+      status: targetStatus,
+    });
+  } catch (error) {
+    console.error('Update status error:', error);
+    return res.status(500).json({ error: 'Failed to update rent bill status.' });
+  }
+});
+
+// 9. POST upload / replace receipt document for a bill
+router.post('/owner/rent/:billId/receipt', requireAuth, requireRole('owner'), receiptUpload.single('receiptDocument'), (req, res) => {
+  try {
+    const { billId } = req.params;
+    const bill = db.prepare('SELECT * FROM monthly_billings WHERE id = ?').get(billId);
+
+    if (!bill) {
+      return res.status(404).json({ error: 'Rent billing record not found.' });
+    }
+
+    if (bill.owner_id && bill.owner_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied: Bill does not belong to your property.' });
+    }
+
+    let receiptFilename = null;
+    let receiptOriginalName = null;
+    let receiptMimeType = null;
+    let receiptSize = null;
+
+    if (req.file) {
+      receiptFilename = req.file.filename;
+      receiptOriginalName = req.file.originalname;
+      receiptMimeType = req.file.mimetype;
+      receiptSize = req.file.size;
+    } else if (req.body.receiptDocumentBase64) {
+      const saved = saveBase64Receipt(req.body.receiptDocumentBase64, 'receipt');
+      if (saved) {
+        receiptFilename = saved.filename;
+        receiptOriginalName = saved.originalName;
+        receiptMimeType = saved.mimeType;
+        receiptSize = saved.size;
+      }
+    }
+
+    if (!receiptFilename) {
+      return res.status(400).json({ error: 'Please select a valid document or image to upload.' });
+    }
+
+    // Clean up old file if present
+    if (bill.receipt_filename && bill.receipt_filename !== receiptFilename) {
+      const oldPath = path.join(receiptsDir, bill.receipt_filename);
+      if (fs.existsSync(oldPath)) {
+        try { fs.unlinkSync(oldPath); } catch (_) {}
+      }
+    }
+
+    db.prepare(`
+      UPDATE monthly_billings
+      SET receipt_filename = ?, receipt_original_name = ?, receipt_mime_type = ?, receipt_size = ?
+      WHERE id = ?
+    `).run(receiptFilename, receiptOriginalName, receiptMimeType, receiptSize, billId);
+
+    return res.json({
+      success: true,
+      message: 'Receipt document uploaded successfully!',
+      receiptUrl: `/api/documents/receipt/${billId}`,
+      receiptOriginalName,
+    });
+  } catch (error) {
+    console.error('Upload receipt error:', error);
+    return res.status(500).json({ error: error.message || 'Failed to upload receipt document.' });
+  }
+});
+
+// 10. DELETE receipt document from a bill
+router.delete('/owner/rent/:billId/receipt', requireAuth, requireRole('owner'), (req, res) => {
+  try {
+    const { billId } = req.params;
+    const bill = db.prepare('SELECT * FROM monthly_billings WHERE id = ?').get(billId);
+
+    if (!bill) {
+      return res.status(404).json({ error: 'Rent billing record not found.' });
+    }
+
+    if (bill.owner_id && bill.owner_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied: Bill does not belong to your property.' });
+    }
+
+    if (bill.receipt_filename) {
+      const oldPath = path.join(receiptsDir, bill.receipt_filename);
+      if (fs.existsSync(oldPath)) {
+        try { fs.unlinkSync(oldPath); } catch (_) {}
+      }
+    }
+
+    db.prepare(`
+      UPDATE monthly_billings
+      SET receipt_filename = NULL, receipt_original_name = NULL, receipt_mime_type = NULL, receipt_size = NULL
+      WHERE id = ?
+    `).run(billId);
+
+    return res.json({
+      success: true,
+      message: 'Receipt document removed successfully!',
+    });
+  } catch (error) {
+    console.error('Delete receipt error:', error);
+    return res.status(500).json({ error: 'Failed to delete receipt document.' });
+  }
+});
+
+// 11. GET & POST owner settings
 router.get(['/owner/settings', '/settings'], requireAuth, requireRole('owner'), (req, res) => {
   try {
     const settings = db.prepare('SELECT * FROM owner_payment_settings WHERE owner_id = ?').get(req.user.id);
@@ -435,14 +901,17 @@ router.post(['/owner/settings', '/settings'], requireAuth, requireRole('owner'),
   }
 });
 
-// 6. POST owner QR upload
-router.post(['/owner/upload-qr', '/upload-qr'], requireAuth, requireRole('owner'), upload.single('qrImage'), async (req, res) => {
+// 12. POST owner Standee QR upload
+router.post(['/owner/upload-qr', '/upload-qr'], requireAuth, requireRole('owner'), qrUpload.single('qrImage'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Please select a QR code image to upload.' });
     }
 
-    let publicUrl = await uploadOwnerQRImage(req.user.id, req.file.buffer, req.file.mimetype);
+    let publicUrl = null;
+    try {
+      publicUrl = await uploadOwnerQRImage(req.user.id, req.file.buffer, req.file.mimetype);
+    } catch (_) {}
 
     if (!publicUrl) {
       publicUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
@@ -459,7 +928,7 @@ router.post(['/owner/upload-qr', '/upload-qr'], requireAuth, requireRole('owner'
   }
 });
 
-// 7. GET owner tenant history
+// 13. GET owner tenant history
 router.get(['/owner/tenant-history/:studentId', '/tenant-history/:studentId', '/history/:studentId'], requireAuth, requireRole('owner'), (req, res) => {
   try {
     const { studentId } = req.params;
@@ -485,6 +954,17 @@ router.get(['/owner/tenant-history/:studentId', '/tenant-history/:studentId', '/
       ORDER BY created_at DESC
     `).all(studentId, student.user_id || studentId);
 
+    const bills = db.prepare(`
+      SELECT * FROM monthly_billings
+      WHERE tenant_id = ? OR user_id = ?
+      ORDER BY created_at DESC
+    `).all(studentId, student.user_id || studentId);
+
+    const enrichedBills = bills.map((b) => ({
+      ...b,
+      receiptUrl: b.receipt_filename ? `/api/documents/receipt/${b.id}` : null,
+    }));
+
     const currentDueDate = student.next_due_date || student.rent_due_date || formatDate(new Date());
     const latestPayment = history.length > 0 ? history[0] : null;
     const feeStatusInfo = evaluateFeeStatus(currentDueDate, student.last_paid_date || latestPayment?.payment_date);
@@ -507,6 +987,7 @@ router.get(['/owner/tenant-history/:studentId', '/tenant-history/:studentId', '/
       },
       statusInfo: feeStatusInfo,
       history,
+      bills: enrichedBills,
     });
   } catch (error) {
     console.error('Tenant history fetch error:', error);
@@ -514,7 +995,7 @@ router.get(['/owner/tenant-history/:studentId', '/tenant-history/:studentId', '/
   }
 });
 
-// 8. POST update tenant fee
+// 14. POST update tenant fee
 router.post(['/owner/update-tenant-fee', '/update-tenant-fee'], requireAuth, requireRole('owner'), (req, res) => {
   try {
     const { studentId, monthlyFee, rentDueDay } = req.body;
@@ -555,7 +1036,7 @@ router.post(['/owner/update-tenant-fee', '/update-tenant-fee'], requireAuth, req
   }
 });
 
-// 9. POST record offline payment
+// 15. POST record offline payment
 router.post(['/owner/record-offline-payment', '/record-offline-payment'], requireAuth, requireRole('owner'), (req, res) => {
   try {
     const { studentId, amount, paymentMethod, referenceNote } = req.body;
@@ -587,9 +1068,9 @@ router.post(['/owner/record-offline-payment', '/record-offline-payment'], requir
     const billId = `bill_${nanoid(10)}`;
     db.prepare(`
       INSERT OR REPLACE INTO monthly_billings (
-        id, tenant_id, user_id, owner_id, property_id, billing_period, amount, due_date, status, paid_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?)
-    `).run(billId, student.id, student.user_id, req.user.id, student.property_id, billingPeriod, payAmount, currentDueDate, now.toISOString());
+        id, tenant_id, user_id, owner_id, property_id, billing_period, amount, due_date, status, paid_at, payment_method, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?)
+    `).run(billId, student.id, student.user_id, req.user.id, student.property_id, billingPeriod, payAmount, currentDueDate, now.toISOString(), paymentMethod || 'Cash', referenceNote || '');
 
     const paymentId = `pay_${nanoid(10)}`;
     db.prepare(`

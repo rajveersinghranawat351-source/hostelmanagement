@@ -4,6 +4,7 @@ const { nanoid } = require('../utils');
 const { db } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 
+// Helper to extract and validate QR payload
 function parseAndFindProperty(rawIdentifier) {
   if (!rawIdentifier) {
     return { error: 'Invalid QR Code', message: 'No QR payload received.', status: 400, code: 'invalid' };
@@ -13,11 +14,17 @@ function parseAndFindProperty(rawIdentifier) {
   let propertyId = null;
   let ownerId = null;
 
+  // 1. Try parsing JSON payload if present
   if (token.startsWith('{') && token.endsWith('}')) {
     try {
       const parsed = JSON.parse(token);
       if (parsed.type && !['HOSTEL_CONNECTION', 'HOSTEL_OWNER_CONNECT', 'HOSTEL_CONNECT'].includes(parsed.type)) {
-        return { error: 'Wrong QR Code', message: 'This QR code is not a valid Hostel Connection QR code.', status: 400, code: 'invalid' };
+        return {
+          error: 'Wrong QR Code',
+          message: 'This QR code is not a valid Hostel Connection QR code.',
+          status: 400,
+          code: 'invalid',
+        };
       }
       propertyId = parsed.propertyId || parsed.property_id || parsed.id || null;
       ownerId = parsed.ownerId || parsed.owner_id || null;
@@ -25,26 +32,57 @@ function parseAndFindProperty(rawIdentifier) {
     } catch (_) {}
   } else if (token.includes('qr=')) {
     try {
-      token = new URLSearchParams(token.split('?')[1]).get('qr') || token;
+      const params = new URLSearchParams(token.split('?')[1]);
+      token = params.get('qr') || token;
     } catch (_) {}
   } else if (token.includes('/join/')) {
     token = token.split('/join/')[1];
   }
 
-  const property = (propertyId && db.prepare('SELECT * FROM properties WHERE id = ?').get(propertyId))
-    || db.prepare('SELECT * FROM properties WHERE qr_identifier = ?').get(token);
+  // 2. Query property from database
+  const lookupKey = propertyId || token;
+  let property = db.prepare('SELECT * FROM properties WHERE id = ? OR qr_identifier = ?').get(lookupKey, token);
+
+  if (!property && token) {
+    property = db.prepare('SELECT * FROM properties WHERE id = ? OR qr_identifier = ?').get(token, token);
+  }
 
   if (!property) {
-    return { error: 'Invalid QR Code', message: 'This QR code is not linked to a valid hostel account.', status: 404, code: 'invalid' };
+    return {
+      error: 'Invalid QR Code',
+      message: 'This QR code is not linked to a valid hostel account.',
+      status: 404,
+      code: 'invalid',
+    };
   }
+
+  // Validate owner ID match if passed in payload
   if (ownerId && property.owner_id && property.owner_id !== ownerId) {
-    return { error: 'Invalid QR Code', message: 'Owner validation mismatch for this property QR code.', status: 400, code: 'invalid' };
+    return {
+      error: 'Invalid QR Code',
+      message: 'Owner validation mismatch for this property QR code.',
+      status: 400,
+      code: 'invalid',
+    };
   }
+
+  // Check QR status
   if (property.qr_status === 'expired') {
-    return { error: 'QR Expired', message: 'Please ask the hostel owner for a new QR code.', status: 410, code: 'expired' };
+    return {
+      error: 'QR Expired',
+      message: 'Please ask the hostel owner for a new QR code.',
+      status: 410,
+      code: 'expired',
+    };
   }
+
   if (property.qr_status === 'revoked') {
-    return { error: 'QR No Longer Active', message: 'Please contact your hostel owner for an updated QR code.', status: 403, code: 'revoked' };
+    return {
+      error: 'QR No Longer Active',
+      message: 'Please contact your hostel owner for an updated QR code.',
+      status: 403,
+      code: 'revoked',
+    };
   }
 
   return {
@@ -65,11 +103,14 @@ function parseAndFindProperty(rawIdentifier) {
   };
 }
 
-// Lookup property by QR identifier / invitation token / structured owner QR
+// Lookup property by QR identifier / invitation token / JSON payload (public / student lookup)
 router.get('/qr/:qrIdentifier', (req, res) => {
   try {
     const result = parseAndFindProperty(decodeURIComponent(req.params.qrIdentifier));
-    return result.error ? res.status(result.status).json(result) : res.json(result);
+    if (result.error) {
+      return res.status(result.status || 400).json(result);
+    }
+    return res.json(result);
   } catch (error) {
     console.error('Property QR lookup error:', error);
     return res.status(500).json({
@@ -80,18 +121,28 @@ router.get('/qr/:qrIdentifier', (req, res) => {
   }
 });
 
+// POST verify-qr for payload body verification
 router.post('/verify-qr', (req, res) => {
   try {
     const requestBody = req.body || {};
     const { qrData, payload, qrIdentifier } = requestBody;
+    // The scanner posts the owner QR JSON directly, while manual/API callers may
+    // wrap it in qrData, payload, or qrIdentifier. Support both shapes.
     const rawData = typeof qrData === 'object'
       ? JSON.stringify(qrData)
       : (qrData || payload || qrIdentifier || (requestBody.type ? JSON.stringify(requestBody) : ''));
     const result = parseAndFindProperty(rawData);
-    return result.error ? res.status(result.status).json(result) : res.json(result);
+    if (result.error) {
+      return res.status(result.status || 400).json(result);
+    }
+    return res.json(result);
   } catch (error) {
     console.error('Property verify-qr error:', error);
-    return res.status(500).json({ error: 'QR verification unavailable', message: 'Could not reach the QR verification service. Please try again.', code: 'service_unavailable' });
+    return res.status(500).json({
+      error: 'Invalid QR Code',
+      message: 'Failed to verify hostel QR code.',
+      status: 'error',
+    });
   }
 });
 
