@@ -4,75 +4,143 @@ const { nanoid } = require('../utils');
 const { db } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 
-// Lookup property by QR identifier / invitation token (public / student lookup)
+// Helper to extract and validate QR payload
+function parseAndFindProperty(rawIdentifier) {
+  if (!rawIdentifier) {
+    return { error: 'Invalid QR Code', message: 'No QR payload received.', status: 400, code: 'invalid' };
+  }
+
+  let token = String(rawIdentifier).trim();
+  let propertyId = null;
+  let ownerId = null;
+
+  // 1. Try parsing JSON payload if present
+  if (token.startsWith('{') && token.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(token);
+      if (parsed.type && !['HOSTEL_CONNECTION', 'HOSTEL_OWNER_CONNECT', 'HOSTEL_CONNECT'].includes(parsed.type)) {
+        return {
+          error: 'Wrong QR Code',
+          message: 'This QR code is not a valid Hostel Connection QR code.',
+          status: 400,
+          code: 'invalid',
+        };
+      }
+      propertyId = parsed.propertyId || parsed.property_id || parsed.id || null;
+      ownerId = parsed.ownerId || parsed.owner_id || null;
+      token = parsed.token || parsed.qrIdentifier || parsed.qr_identifier || propertyId || token;
+    } catch (_) {}
+  } else if (token.includes('qr=')) {
+    try {
+      const params = new URLSearchParams(token.split('?')[1]);
+      token = params.get('qr') || token;
+    } catch (_) {}
+  } else if (token.includes('/join/')) {
+    token = token.split('/join/')[1];
+  }
+
+  // 2. Query property from database
+  const lookupKey = propertyId || token;
+  let property = db.prepare('SELECT * FROM properties WHERE id = ? OR qr_identifier = ?').get(lookupKey, token);
+
+  if (!property && token) {
+    property = db.prepare('SELECT * FROM properties WHERE id = ? OR qr_identifier = ?').get(token, token);
+  }
+
+  if (!property) {
+    return {
+      error: 'Invalid QR Code',
+      message: 'This QR code is not linked to a valid hostel account.',
+      status: 404,
+      code: 'invalid',
+    };
+  }
+
+  // Validate owner ID match if passed in payload
+  if (ownerId && property.owner_id && property.owner_id !== ownerId) {
+    return {
+      error: 'Invalid QR Code',
+      message: 'Owner validation mismatch for this property QR code.',
+      status: 400,
+      code: 'invalid',
+    };
+  }
+
+  // Check QR status
+  if (property.qr_status === 'expired') {
+    return {
+      error: 'QR Expired',
+      message: 'Please ask the hostel owner for a new QR code.',
+      status: 410,
+      code: 'expired',
+    };
+  }
+
+  if (property.qr_status === 'revoked') {
+    return {
+      error: 'QR No Longer Active',
+      message: 'Please contact your hostel owner for an updated QR code.',
+      status: 403,
+      code: 'revoked',
+    };
+  }
+
+  return {
+    property: {
+      id: property.id,
+      ownerId: property.owner_id,
+      propertyName: property.property_name,
+      propertyType: property.property_type,
+      address: property.address,
+      location: property.city || 'Jaipur, Rajasthan',
+      contact: property.contact,
+      ownerName: property.owner_name || 'Hostel Owner',
+      qrIdentifier: property.qr_identifier,
+      qrStatus: property.qr_status || 'active',
+      room: property.default_room || '204',
+      bed: property.default_bed || 'B',
+    },
+  };
+}
+
+// Lookup property by QR identifier / invitation token / JSON payload (public / student lookup)
 router.get('/qr/:qrIdentifier', (req, res) => {
   try {
-    const { qrIdentifier } = req.params;
-    if (!qrIdentifier) {
-      return res.status(400).json({
-        error: 'Invalid QR Code',
-        message: 'This QR code is not linked to a valid hostel account.',
-        status: 'invalid',
-      });
+    const result = parseAndFindProperty(decodeURIComponent(req.params.qrIdentifier));
+    if (result.error) {
+      return res.status(result.status || 400).json(result);
     }
-
-    const cleanIdentifier = qrIdentifier.trim();
-
-    const property = db.prepare(`
-      SELECT p.id, p.owner_id, p.property_name, p.property_type, p.address, p.contact, p.city,
-             p.qr_identifier, p.qr_status, p.default_room, p.default_bed, p.created_at,
-             u.name AS owner_name
-      FROM properties p
-      JOIN users u ON p.owner_id = u.id
-      WHERE p.qr_identifier = ?
-    `).get(cleanIdentifier);
-
-    if (!property) {
-      return res.status(404).json({
-        error: 'Invalid QR Code',
-        message: 'This QR code is not linked to a valid hostel account.',
-        status: 'invalid',
-      });
-    }
-
-    // Check QR status
-    if (property.qr_status === 'expired') {
-      return res.status(410).json({
-        error: 'QR Expired',
-        message: 'Please ask the hostel owner for a new QR code.',
-        status: 'expired',
-      });
-    }
-
-    if (property.qr_status === 'revoked') {
-      return res.status(403).json({
-        error: 'QR No Longer Active',
-        message: 'Please contact your hostel owner.',
-        status: 'revoked',
-      });
-    }
-
-    return res.json({
-      property: {
-        id: property.id,
-        ownerId: property.owner_id,
-        propertyName: property.property_name,
-        propertyType: property.property_type,
-        address: property.address,
-        location: property.city || 'Jaipur, Rajasthan',
-        contact: property.contact,
-        ownerName: property.owner_name,
-        qrIdentifier: property.qr_identifier,
-        qrStatus: property.qr_status || 'active',
-        room: property.default_room || '204',
-        bed: property.default_bed || 'B',
-      },
-    });
+    return res.json(result);
   } catch (error) {
     console.error('Property QR lookup error:', error);
     return res.status(500).json({
       error: 'Invalid QR Code',
       message: 'Failed to look up hostel account. Please try again.',
+      status: 'error',
+    });
+  }
+});
+
+// POST verify-qr for payload body verification
+router.post('/verify-qr', (req, res) => {
+  try {
+    const requestBody = req.body || {};
+    const { qrData, payload, qrIdentifier } = requestBody;
+    // The scanner posts the owner QR JSON directly, while manual/API callers may
+    // wrap it in qrData, payload, or qrIdentifier. Support both shapes.
+    const rawData = typeof qrData === 'object'
+      ? JSON.stringify(qrData)
+      : (qrData || payload || qrIdentifier || (requestBody.type ? JSON.stringify(requestBody) : ''));
+    const result = parseAndFindProperty(rawData);
+    if (result.error) {
+      return res.status(result.status || 400).json(result);
+    }
+    return res.json(result);
+  } catch (error) {
+    console.error('Property verify-qr error:', error);
+    return res.status(500).json({
+      error: 'Invalid QR Code',
+      message: 'Failed to verify hostel QR code.',
       status: 'error',
     });
   }
@@ -116,9 +184,9 @@ router.post('/', requireAuth, requireRole('owner'), (req, res) => {
 
     db.prepare(`
       INSERT INTO properties (
-        id, owner_id, property_name, property_type, address, contact, city,
+        id, owner_id, property_name, property_type, address, contact, city, image_url,
         qr_identifier, qr_status, default_room, default_bed
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       propertyId,
       req.user.id,
@@ -127,7 +195,9 @@ router.post('/', requireAuth, requireRole('owner'), (req, res) => {
       address.trim(),
       contact.trim(),
       city ? city.trim() : 'Jaipur, Rajasthan',
+      null,
       qrIdentifier,
+      'active',
       defaultRoom ? defaultRoom.trim() : '204',
       defaultBed ? defaultBed.trim() : 'B'
     );

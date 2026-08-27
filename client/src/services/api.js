@@ -78,6 +78,13 @@ export const api = {
 
   // Property Lookup
   async lookupPropertyByQR(qrIdentifier) {
+    if (typeof qrIdentifier === 'object' || (typeof qrIdentifier === 'string' && qrIdentifier.trim().startsWith('{'))) {
+      return safeFetch(`${API_BASE}/properties/verify-qr`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: typeof qrIdentifier === 'string' ? qrIdentifier : JSON.stringify(qrIdentifier),
+      });
+    }
     return safeFetch(`${API_BASE}/properties/qr/${encodeURIComponent(qrIdentifier)}`);
   },
 
@@ -290,6 +297,64 @@ export const api = {
     });
   },
 
+  // Owner Rent & Billing APIs
+  async getOwnerRentBills() {
+    return safeFetch(`${API_BASE}/payments/owner/rent/bills`, {
+      headers: { ...getAuthHeader() },
+    });
+  },
+
+  async addOwnerRentBill(dataOrFormData) {
+    const isFormData = typeof FormData !== 'undefined' && dataOrFormData instanceof FormData;
+    const headers = { ...getAuthHeader() };
+    if (!isFormData) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    return safeFetch(`${API_BASE}/payments/owner/rent/add`, {
+      method: 'POST',
+      headers,
+      body: isFormData ? dataOrFormData : JSON.stringify(dataOrFormData),
+    }, 45000);
+  },
+
+  async updateOwnerRentBill(billId, updateData) {
+    return safeFetch(`${API_BASE}/payments/owner/rent/${billId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify(updateData),
+    });
+  },
+
+  async updateOwnerRentStatus(billId, status, paymentMethod = 'UPI') {
+    return safeFetch(`${API_BASE}/payments/owner/rent/${billId}/status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify({ status, paymentMethod }),
+    });
+  },
+
+  async uploadOwnerRentReceipt(billId, formData) {
+    return safeFetch(`${API_BASE}/payments/owner/rent/${billId}/receipt`, {
+      method: 'POST',
+      headers: { ...getAuthHeader() },
+      body: formData,
+    }, 45000);
+  },
+
+  async deleteOwnerRentReceipt(billId) {
+    return safeFetch(`${API_BASE}/payments/owner/rent/${billId}/receipt`, {
+      method: 'DELETE',
+      headers: { ...getAuthHeader() },
+    });
+  },
+
   async recordOwnerOfflinePayment(paymentData) {
     return safeFetch(`${API_BASE}/payments/owner/record-offline-payment`, {
       method: 'POST',
@@ -301,4 +366,5 @@ export const api = {
     });
   },
 };
+
 

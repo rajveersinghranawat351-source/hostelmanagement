@@ -48,11 +48,11 @@ router.post('/register', (req, res) => {
       const propId = `prop_${nanoid(10)}`;
       const qrIdentifier = `QR_${nanoid(8).toUpperCase()}`;
       db.prepare(`
-        INSERT INTO properties (id, owner_id, property_name, property_type, address, contact, city, qr_identifier, qr_status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
+        INSERT INTO properties (id, owner_id, property_name, property_type, address, contact, city, image_url, qr_identifier, qr_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         propId, userId, `${name.trim()}'s PG / Hostel`, 'Co-Living / PG',
-        'Main Road, City Center', normalizedMobile, 'Jaipur, Rajasthan', qrIdentifier
+        'Main Road, City Center', normalizedMobile, 'Jaipur, Rajasthan', null, qrIdentifier, 'active'
       );
 
       const settingsId = `pay_set_${nanoid(10)}`;

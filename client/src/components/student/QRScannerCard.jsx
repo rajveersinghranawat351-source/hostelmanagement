@@ -105,15 +105,32 @@ export default function QRScannerCard({ onPropertyDetected, onGoToDashboard }) {
     setErrorDetails(null);
 
     try {
-      let identifier = rawText.trim();
-      if (rawText.includes('qr=')) {
-        const urlParams = new URLSearchParams(rawText.split('?')[1]);
-        identifier = urlParams.get('qr') || identifier;
-      } else if (rawText.includes('/join/')) {
-        identifier = rawText.split('/join/')[1];
+      let trimmed = (rawText || '').trim();
+      let payloadToLookup = trimmed;
+
+      // 1. Try parsing JSON payload if present
+      if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (parsed.type && !['HOSTEL_CONNECTION', 'HOSTEL_OWNER_CONNECT', 'HOSTEL_CONNECT'].includes(parsed.type)) {
+            const err = new Error('Wrong QR code. Please scan an authentic Hostel Owner connection QR.');
+            err.code = 'wrong_type';
+            throw err;
+          }
+          payloadToLookup = trimmed;
+        } catch (jsonErr) {
+          if (jsonErr.code === 'wrong_type') throw jsonErr;
+        }
+      } else if (trimmed.includes('qr=')) {
+        try {
+          const urlParams = new URLSearchParams(trimmed.split('?')[1]);
+          payloadToLookup = urlParams.get('qr') || trimmed;
+        } catch (_) {}
+      } else if (trimmed.includes('/join/')) {
+        payloadToLookup = trimmed.split('/join/')[1];
       }
 
-      const res = await api.lookupPropertyByQR(identifier);
+      const res = await api.lookupPropertyByQR(payloadToLookup);
       showSuccess(`Hostel Account Found: ${res.property.propertyName}!`);
       onPropertyDetected(res.property);
     } catch (err) {
@@ -124,21 +141,39 @@ export default function QRScannerCard({ onPropertyDetected, onGoToDashboard }) {
   };
 
   const handleValidationFailure = (err) => {
-    if (err.status === 'expired') {
+    const message = err.message || '';
+    const isServiceFailure = !err.status && /network|timed out|failed to fetch|connection/i.test(message)
+      || Number(err.status) >= 500;
+
+    if (isServiceFailure) {
+      setErrorDetails({
+        title: 'QR Verification Unavailable',
+        message: 'The QR verification service could not be reached. Please check your internet connection and try again.',
+        type: 'service',
+      });
+      showError('QR verification service is unavailable. Please try again.');
+    } else if (err.code === 'wrong_type' || (message && message.toLowerCase().includes('wrong qr'))) {
+      setErrorDetails({
+        title: 'Wrong QR Code',
+        message: 'This QR code is not a valid Hostel Connection QR code. Please scan the official QR provided by your hostel owner.',
+        type: 'invalid',
+      });
+      showError('Wrong QR Code: Not a Hostel Connection QR.');
+    } else if (err.status === 410 || err.status === 'expired' || (err.data && err.data.code === 'expired')) {
       setErrorDetails({
         title: 'QR Expired',
-        message: 'Please ask the hostel owner for a new QR code.',
+        message: 'Please ask the hostel owner for an updated QR code.',
         type: 'expired',
       });
       showError('This QR code is expired.');
-    } else if (err.status === 'revoked') {
+    } else if (err.status === 403 || err.status === 'revoked' || (err.data && err.data.code === 'revoked')) {
       setErrorDetails({
         title: 'QR No Longer Active',
-        message: 'Please contact your hostel owner.',
+        message: 'This invitation QR code has been deactivated by the property owner. Please contact your hostel owner.',
         type: 'revoked',
       });
       showError('This QR code is no longer active.');
-    } else if (err.alreadyJoined) {
+    } else if (err.alreadyJoined || (err.data && err.data.alreadyJoined)) {
       setErrorDetails({
         title: 'Already Connected',
         message: 'You are already connected to this hostel account.',
@@ -147,10 +182,10 @@ export default function QRScannerCard({ onPropertyDetected, onGoToDashboard }) {
     } else {
       setErrorDetails({
         title: 'Invalid QR Code',
-        message: 'This QR code is not linked to a valid hostel account.',
+        message: err.message || 'This QR code is not linked to a valid hostel account.',
         type: 'invalid',
       });
-      showError('Invalid QR Code: Not linked to a valid hostel account.');
+      showError(err.message || 'Invalid QR Code: Not linked to a valid hostel account.');
     }
   };
 

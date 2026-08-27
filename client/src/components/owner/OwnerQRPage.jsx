@@ -27,7 +27,17 @@ export default function OwnerQRPage({ property, onBackToDashboard, onPropertyUpd
 
   const qrIdentifier = currentProperty.qr_identifier || currentProperty.qrIdentifier;
   const qrStatus = currentProperty.qr_status || currentProperty.qrStatus || 'active';
-  const qrValue = `${window.location.origin}/?qr=${encodeURIComponent(qrIdentifier)}`;
+  
+  // Standardized structured payload for Owner -> Student QR connection
+  const qrPayload = {
+    type: 'HOSTEL_CONNECTION',
+    propertyId: currentProperty.id,
+    ownerId: currentProperty.owner_id || currentProperty.ownerId,
+    token: qrIdentifier,
+    version: 1,
+  };
+  const qrValue = JSON.stringify(qrPayload);
+  const shareUrl = `${window.location.origin}/?qr=${encodeURIComponent(qrIdentifier)}`;
 
   // Download QR
   const handleDownloadQR = () => {
@@ -46,13 +56,13 @@ export default function OwnerQRPage({ property, onBackToDashboard, onPropertyUpd
 
   // Share QR
   const handleShareQR = async () => {
-    const shareText = `Join ${currentProperty.property_name} on HostelStay: ${qrValue}`;
+    const shareText = `Join ${currentProperty.property_name} on HostelStay: ${shareUrl}`;
     if (navigator.share) {
       try {
         await navigator.share({
           title: currentProperty.property_name,
-          text: `Scan QR to join ${currentProperty.property_name}`,
-          url: qrValue,
+          text: `Scan QR or use code to join ${currentProperty.property_name}`,
+          url: shareUrl,
         });
         showSuccess('Shared successfully!');
         return;

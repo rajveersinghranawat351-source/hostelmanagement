@@ -111,12 +111,12 @@ export default function StudentDashboard({ onRescanQR }) {
     }
   };
 
-  const handleOpenDoc = async (type) => {
+  const handleOpenDoc = async (type, customUrl = null) => {
     setActiveDocModal(type);
     setDocLoading(true);
     setDocBlobUrl(null);
     try {
-      const url = type === 'face' ? studentData.facePhotoUrl : studentData.aadhaarDocumentUrl;
+      const url = customUrl || (type === 'face' ? studentData.facePhotoUrl : studentData.aadhaarDocumentUrl);
       const blobUrl = await api.fetchSecureDocumentBlob(url);
       setDocBlobUrl(blobUrl);
     } catch (err) {
@@ -302,7 +302,18 @@ export default function StudentDashboard({ onRescanQR }) {
               </div>
 
               {/* Action Button */}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {billing.receiptDocumentUrl && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDoc('receipt', billing.receiptDocumentUrl)}
+                    className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer min-h-[40px]"
+                  >
+                    <FileBadge className="w-4 h-4 text-emerald-600" />
+                    <span>View Rent Receipt</span>
+                  </button>
+                )}
+
                 {billing.status !== 'paid' ? (
                   <button
                     type="button"
@@ -721,7 +732,11 @@ export default function StudentDashboard({ onRescanQR }) {
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden animate-fade-in">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <span className="text-sm font-bold text-slate-900">
-                {activeDocModal === 'face' ? 'Your Verified Photo' : 'Your Aadhaar Card'}
+                {activeDocModal === 'face'
+                  ? 'Your Verified Photo'
+                  : activeDocModal === 'aadhaar'
+                  ? 'Your Aadhaar Card'
+                  : 'Official Rent Receipt / Document'}
               </span>
               <button
                 type="button"
@@ -739,17 +754,36 @@ export default function StudentDashboard({ onRescanQR }) {
                   <span>Loading encrypted document...</span>
                 </div>
               ) : docBlobUrl ? (
-                <img
-                  src={docBlobUrl}
-                  alt="Student Document"
-                  className="max-h-[380px] w-auto object-contain rounded-xl shadow-md"
-                />
+                activeDocModal === 'receipt' ? (
+                  <div className="w-full h-72 sm:h-80">
+                    <iframe
+                      src={docBlobUrl}
+                      title="Rent Receipt Document"
+                      className="w-full h-full border-none rounded-xl bg-white shadow-inner"
+                    />
+                  </div>
+                ) : (
+                  <img
+                    src={docBlobUrl}
+                    alt="Student Document"
+                    className="max-h-[380px] w-auto object-contain rounded-xl shadow-md"
+                  />
+                )
               ) : (
                 <p className="text-xs text-rose-500">Failed to display document.</p>
               )}
             </div>
 
-            <div className="p-3 bg-white border-t border-slate-100 text-center">
+            <div className="p-3 bg-white border-t border-slate-100 flex items-center justify-center gap-3">
+              {docBlobUrl && (
+                <a
+                  href={docBlobUrl}
+                  download={activeDocModal === 'receipt' ? 'Rent_Receipt.pdf' : 'document'}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-sm transition"
+                >
+                  Download File
+                </a>
+              )}
               <button
                 type="button"
                 onClick={handleCloseDoc}

@@ -46,12 +46,13 @@ export function AuthProvider({ children }) {
                 setActiveRole(res.user.role);
                 localStorage.setItem('hostel_pg_active_role', res.user.role);
               }
-            } else {
-              logout();
             }
           } catch (err) {
-            console.warn('Session verification failed, resetting auth state:', err);
-            logout();
+            console.warn('Session verification notice:', err);
+            // Only logout if server explicitly responded with 401 Unauthorized (token invalid / revoked)
+            if (err.status === 401 || (err.data && (err.data.code === 'INVALID_TOKEN' || err.data.code === 'NO_TOKEN'))) {
+              logout();
+            }
           }
         }
       } catch (e) {

@@ -216,14 +216,14 @@ router.post(
       const resolvedName = (fullName?.trim()) || req.user.name;
       const resolvedMobile = (mobile?.trim()) || req.user.mobile;
       const resolvedEmail = (email?.trim()) || req.user.email;
-      const resolvedAddress = address?.trim();
-      const resolvedHometown = hometown?.trim();
+      const resolvedAddress = (address?.trim()) || 'Main Road, City Center';
+      const resolvedHometown = (hometown?.trim()) || 'Jaipur';
 
-      if (!resolvedName || !resolvedMobile || !resolvedAddress || !resolvedHometown) {
+      if (!resolvedName || !resolvedMobile) {
         cleanUploadedFiles(uploadedFiles);
         return res.status(400).json({
           error: 'Validation Error',
-          message: 'Please fill in all required personal information (Name, Mobile, Hometown, Address).',
+          message: 'Please fill in all required personal information (Name, Mobile).',
         });
       }
 
